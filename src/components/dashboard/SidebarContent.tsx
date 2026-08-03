@@ -1,13 +1,15 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { PanelLeft, Plus, Vault } from 'lucide-react'
+import { ChevronRight, PanelLeft, Plus, Vault } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { collectionNav, primaryNav, typeNav } from '@/lib/dashboard-nav'
 import SidebarRow from './SidebarRow'
+import SidebarSection from './SidebarSection'
 import GitSyncPanel from './GitSyncPanel'
 
 type Props = {
@@ -18,12 +20,14 @@ type Props = {
 
 const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
   const pathname = usePathname()
+  const [typesOpen, setTypesOpen] = useState(true)
+  const [collectionsOpen, setCollectionsOpen] = useState(true)
 
   return (
-    <div className="flex h-full flex-col bg-sidebar">
+    <div className="flex h-full min-h-0 flex-col bg-sidebar">
       <div
         className={cn(
-          'flex items-center gap-2 p-3',
+          'flex shrink-0 items-center gap-2 p-3',
           collapsed && 'flex-col gap-3',
         )}
       >
@@ -51,7 +55,7 @@ const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
         )}
       </div>
 
-      <div className={cn('px-3 pb-3', collapsed && 'px-2')}>
+      <div className={cn('shrink-0 px-3 pb-3', collapsed && 'px-2')}>
         <Button className={cn('w-full', collapsed && 'px-0')}>
           <Plus className="size-4" />
           {!collapsed && 'New Item'}
@@ -59,8 +63,8 @@ const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
         </Button>
       </div>
 
-      <ScrollArea className="flex-1">
-        <nav className={cn('space-y-6 px-3 pb-4', collapsed && 'px-2')}>
+      <ScrollArea className="min-h-0 flex-1">
+        <nav className={cn('space-y-4 px-3 pb-4', collapsed && 'px-2')}>
           <ul className="space-y-1">
             {primaryNav.map((entry) => {
               const Icon = entry.icon
@@ -80,32 +84,12 @@ const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
             })}
           </ul>
 
-          <div>
-            {!collapsed && (
-              <h2 className="px-3 pb-2 text-xs font-medium tracking-wider text-muted-foreground uppercase">
-                Collections
-              </h2>
-            )}
-            <ul className="space-y-1">
-              {collectionNav.map((collection) => (
-                <li key={collection.id}>
-                  <SidebarRow
-                    label={collection.name}
-                    count={collection.count}
-                    collapsed={collapsed}
-                    dotColor={collection.color}
-                  />
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            {!collapsed && (
-              <h2 className="px-3 pb-2 text-xs font-medium tracking-wider text-muted-foreground uppercase">
-                Types
-              </h2>
-            )}
+          <SidebarSection
+            title="Types"
+            collapsed={collapsed}
+            open={typesOpen}
+            onOpenChange={setTypesOpen}
+          >
             <ul className="space-y-1">
               {typeNav.map((type) => {
                 const Icon = type.icon
@@ -118,13 +102,47 @@ const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
                       href={type.href}
                       active={pathname === type.href}
                       icon={<Icon className="size-4 shrink-0" />}
+                      iconColor={type.color}
                       onNavigate={onNavigate}
                     />
                   </li>
                 )
               })}
             </ul>
-          </div>
+          </SidebarSection>
+
+          <SidebarSection
+            title="Collections"
+            collapsed={collapsed}
+            open={collectionsOpen}
+            onOpenChange={setCollectionsOpen}
+          >
+            <ul className="space-y-1">
+              {collectionNav.map((collection) => (
+                <li key={collection.id}>
+                  <SidebarRow
+                    label={collection.name}
+                    count={collection.count}
+                    collapsed={collapsed}
+                    dot
+                    dotColor={collection.color}
+                  />
+                </li>
+              ))}
+            </ul>
+            {!collapsed && (
+              <Link
+                href="/collections"
+                onClick={onNavigate}
+                className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              >
+                <span className="flex-1 truncate text-left">
+                  View all collections
+                </span>
+                <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
+              </Link>
+            )}
+          </SidebarSection>
         </nav>
       </ScrollArea>
 

@@ -3,7 +3,7 @@ import { Pin, Star } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { TYPE_ICONS } from '@/lib/dashboard-nav'
+import { ITEM_TYPE_META } from '@/lib/item-types'
 import type { DashboardItem } from '@/lib/dashboard-data'
 import ItemPreview from './ItemPreview'
 
@@ -13,7 +13,7 @@ type Props = {
 }
 
 const ItemCard = ({ item, view }: Props) => {
-  const Icon = TYPE_ICONS[item.type]
+  const Icon = ITEM_TYPE_META[item.type].icon
   const isList = view === 'list'
 
   return (

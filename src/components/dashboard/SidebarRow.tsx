@@ -16,6 +16,9 @@ type Props = {
   href?: string
   active?: boolean
   icon?: React.ReactNode
+  iconColor?: string
+  /** Render a colour dot instead of an icon, for collection rows. */
+  dot?: boolean
   dotColor?: string
   onNavigate?: () => void
 }
@@ -27,6 +30,8 @@ const SidebarRow = ({
   href,
   active = false,
   icon,
+  iconColor,
+  dot = false,
   dotColor,
   onNavigate,
 }: Props) => {
@@ -38,12 +43,19 @@ const SidebarRow = ({
       : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
   )
 
-  const marker = dotColor ? (
+  const marker = dot ? (
     <span
       aria-hidden="true"
-      className="size-2 shrink-0 rounded-full"
-      style={{ backgroundColor: dotColor }}
+      className={cn(
+        'size-2 shrink-0 rounded-full',
+        !dotColor && 'bg-muted-foreground',
+      )}
+      style={dotColor ? { backgroundColor: dotColor } : undefined}
     />
+  ) : iconColor ? (
+    <span className="flex shrink-0 items-center" style={{ color: iconColor }}>
+      {icon}
+    </span>
   ) : (
     icon
   )

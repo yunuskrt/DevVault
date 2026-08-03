@@ -15,7 +15,6 @@ export type ItemType = {
 export type Collection = {
   id: string
   name: string
-  color: string
   favorite: boolean
   updatedAt: string
 }
@@ -50,42 +49,36 @@ export const collections: Collection[] = [
   {
     id: 'react-patterns',
     name: 'React Patterns',
-    color: '#3b82f6',
     favorite: true,
     updatedAt: '2026-08-01T16:05:00Z',
   },
   {
     id: 'python-snippets',
     name: 'Python Snippets',
-    color: '#22c55e',
     favorite: true,
     updatedAt: '2026-07-02T19:25:00Z',
   },
   {
     id: 'ai-prompts',
     name: 'AI Prompts',
-    color: '#a855f7',
     favorite: true,
     updatedAt: '2026-07-29T08:40:00Z',
   },
   {
     id: 'context-files',
     name: 'Context Files',
-    color: '#eab308',
     favorite: false,
     updatedAt: '2026-06-30T14:20:00Z',
   },
   {
     id: 'devops-commands',
     name: 'DevOps & Commands',
-    color: '#ef4444',
     favorite: false,
     updatedAt: '2026-07-16T10:15:00Z',
   },
   {
     id: 'resources-links',
     name: 'Resources & Links',
-    color: '#38bdf8',
     favorite: false,
     updatedAt: '2026-06-11T15:40:00Z',
   },

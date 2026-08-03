@@ -1,6 +1,7 @@
 import React from 'react'
 import { Star } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import type { DashboardCollection } from '@/lib/dashboard-data'
 
 type Props = {
@@ -17,8 +18,15 @@ const RecentCollections = ({ collections }: Props) => {
             <div className="flex items-center gap-2">
               <span
                 aria-hidden="true"
-                className="size-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: collection.color }}
+                className={cn(
+                  'size-2.5 shrink-0 rounded-full',
+                  !collection.color && 'bg-muted-foreground',
+                )}
+                style={
+                  collection.color
+                    ? { backgroundColor: collection.color }
+                    : undefined
+                }
               />
               <h3 className="truncate text-sm font-medium">{collection.name}</h3>
               {collection.favorite && (
