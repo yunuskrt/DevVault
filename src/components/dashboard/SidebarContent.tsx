@@ -1,0 +1,136 @@
+'use client'
+
+import React from 'react'
+import { usePathname } from 'next/navigation'
+import { PanelLeft, Plus, Vault } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { cn } from '@/lib/utils'
+import { collectionNav, primaryNav, typeNav } from '@/lib/dashboard-nav'
+import SidebarRow from './SidebarRow'
+import GitSyncPanel from './GitSyncPanel'
+
+type Props = {
+  collapsed: boolean
+  onToggle?: () => void
+  onNavigate?: () => void
+}
+
+const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
+  const pathname = usePathname()
+
+  return (
+    <div className="flex h-full flex-col bg-sidebar">
+      <div
+        className={cn(
+          'flex items-center gap-2 p-3',
+          collapsed && 'flex-col gap-3',
+        )}
+      >
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <Vault className="size-4" />
+        </span>
+        {!collapsed && (
+          <span className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate text-sm font-semibold">DevVault</span>
+            <span className="truncate text-xs text-muted-foreground">
+              knowledge, versioned
+            </span>
+          </span>
+        )}
+        {onToggle && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onToggle}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!collapsed}
+          >
+            <PanelLeft className="size-4" />
+          </Button>
+        )}
+      </div>
+
+      <div className={cn('px-3 pb-3', collapsed && 'px-2')}>
+        <Button className={cn('w-full', collapsed && 'px-0')}>
+          <Plus className="size-4" />
+          {!collapsed && 'New Item'}
+          {collapsed && <span className="sr-only">New Item</span>}
+        </Button>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <nav className={cn('space-y-6 px-3 pb-4', collapsed && 'px-2')}>
+          <ul className="space-y-1">
+            {primaryNav.map((entry) => {
+              const Icon = entry.icon
+              return (
+                <li key={entry.id}>
+                  <SidebarRow
+                    label={entry.label}
+                    count={entry.count}
+                    collapsed={collapsed}
+                    href={entry.href}
+                    active={entry.href ? pathname === entry.href : false}
+                    icon={<Icon className="size-4 shrink-0" />}
+                    onNavigate={onNavigate}
+                  />
+                </li>
+              )
+            })}
+          </ul>
+
+          <div>
+            {!collapsed && (
+              <h2 className="px-3 pb-2 text-xs font-medium tracking-wider text-muted-foreground uppercase">
+                Collections
+              </h2>
+            )}
+            <ul className="space-y-1">
+              {collectionNav.map((collection) => (
+                <li key={collection.id}>
+                  <SidebarRow
+                    label={collection.name}
+                    count={collection.count}
+                    collapsed={collapsed}
+                    dotColor={collection.color}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            {!collapsed && (
+              <h2 className="px-3 pb-2 text-xs font-medium tracking-wider text-muted-foreground uppercase">
+                Types
+              </h2>
+            )}
+            <ul className="space-y-1">
+              {typeNav.map((type) => {
+                const Icon = type.icon
+                return (
+                  <li key={type.id}>
+                    <SidebarRow
+                      label={type.label}
+                      count={type.count}
+                      collapsed={collapsed}
+                      href={type.href}
+                      active={pathname === type.href}
+                      icon={<Icon className="size-4 shrink-0" />}
+                      onNavigate={onNavigate}
+                    />
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        </nav>
+      </ScrollArea>
+
+      <GitSyncPanel collapsed={collapsed} />
+    </div>
+  )
+}
+
+export default SidebarContent

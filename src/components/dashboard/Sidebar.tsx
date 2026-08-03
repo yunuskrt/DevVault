@@ -1,13 +1,49 @@
-import React from "react";
+'use client'
 
-type Props = {};
+import React from 'react'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { cn } from '@/lib/utils'
+import SidebarContent from './SidebarContent'
 
-const Sidebar = ({}: Props) => {
+type Props = {
+  collapsed: boolean
+  mobileOpen: boolean
+  onToggle: () => void
+  onMobileOpenChange: (open: boolean) => void
+}
+
+const Sidebar = ({
+  collapsed,
+  mobileOpen,
+  onToggle,
+  onMobileOpenChange,
+}: Props) => {
   return (
-    <aside className="hidden w-64 shrink-0 border-r border-border bg-sidebar p-4 md:block">
-      <h2 className="text-lg font-semibold">Sidebar</h2>
-    </aside>
-  );
-};
+    <>
+      <aside
+        className={cn(
+          'hidden shrink-0 border-r border-sidebar-border transition-[width] duration-200 md:block',
+          collapsed ? 'w-16' : 'w-64',
+        )}
+      >
+        <SidebarContent collapsed={collapsed} onToggle={onToggle} />
+      </aside>
 
-export default Sidebar;
+      <Sheet open={mobileOpen} onOpenChange={onMobileOpenChange}>
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          className="w-64 p-0 sm:max-w-64"
+        >
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <SidebarContent
+            collapsed={false}
+            onNavigate={() => onMobileOpenChange(false)}
+          />
+        </SheetContent>
+      </Sheet>
+    </>
+  )
+}
+
+export default Sidebar
