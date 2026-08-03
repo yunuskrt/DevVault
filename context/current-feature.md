@@ -1,4 +1,4 @@
-# Current Feature: Dashboard UI Phase 1
+# Current Feature
 
 <!-- Feature Name -->
 
@@ -6,42 +6,15 @@
 
 <!-- Not Started|In Progress|Completed -->
 
-Completed
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-- Initialize shadcn/ui in the project (creates `components.json`, `src/lib/utils.ts`, theme tokens).
-- Install the shadcn components phase 1 needs (button, input at minimum).
-- Make the dashboard the home page at `/` (replace the existing `src/app/page.tsx` boilerplate), with its layout.
-- Set up global styles and theme tokens for the dashboard shell.
-- Dark mode by default, light mode still supported.
-- Top bar with a search field and a "New Item" button — display only, no behavior.
-- Placeholder sidebar and main regions: an `h2` reading "Sidebar" and one reading "Main".
-- `npm run build` passes.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-Spec: `context/features/dashboard-phase-1-spec.md`
-Reference UI: `context/screenshots/dashboard-ui-main.png`
-
-Phase 1 of 3. Scope is the shell only — no real data wiring this phase.
-
-- Phase 2: collapsible sidebar, type links to `/items/[type]`, favorites, recents, avatar area, mobile drawer.
-- Phase 3: main area content — recent collections, pinned items, 10 recent items, 4 stat cards.
-
-Current project state:
-
-- Tailwind v4 installed, configured via `@theme` in `src/app/globals.css`. No `tailwind.config` file — do not create one.
-- shadcn/ui not yet initialized; no `components.json`.
-- `src/lib/mock-data.ts` exists but is not consumed until phase 2/3.
-- No `lint` script in `package.json`; `npm run build` runs the TypeScript check.
-- `src/app/page.tsx` still holds Next.js boilerplate and gets replaced by the dashboard.
-
-Open question for implementation: the screenshot places "New Item" in the sidebar and the search bar in the main column, while the spec asks for both in a top bar. Following the spec (top bar) for phase 1; phase 2 may move them to match the screenshot.
 
 ## History
 
