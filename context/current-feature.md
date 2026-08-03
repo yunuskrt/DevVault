@@ -1,4 +1,4 @@
-# Current Feature: Dashboard UI Phase 3
+# Current Feature
 
 <!-- Feature Name -->
 
@@ -6,52 +6,15 @@
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-- Fill in the main area at `/`, replacing the phase 2 `h2` placeholder. Keep importing `src/lib/mock-data.ts` directly; no Git wiring this phase.
-- Four stat cards across the top: total items, total collections, favorite items, favorite collections. Explicitly not in the screenshot, so the visual treatment is ours to design — match the existing card styling.
-- Recent collections section.
-- Pinned items section (3 pinned in mock data).
-- 10 most recent items, sorted by `updatedAt` descending (12 exist, so 2 are cut).
-- An item card matching the screenshot: type icon, title, pin and favorite indicators, `Type · Collection` subtitle, content preview, `#tag` chips, and a relative timestamp.
-- Extend `src/lib/dashboard-nav.ts` (or a sibling module) with the new derivations rather than computing in components — same seam that phase 2 established.
-- `npm run build` passes.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-Spec: `context/features/dashboard-phase-3-spec.md`
-Reference UI: `context/screenshots/dashboard-ui-main.png`
-
-Phase 3 of 3. Final phase of the dashboard UI. The sidebar is done and should not need changes.
-
-Content previews in the screenshot are type-dependent: monospace code blocks for `snippet`/`command`/`file`, plain prose for `note`/`prompt`, the bare URL for `url`, and a thumbnail for `image`. `Item` already carries `content`, `language`, `url` and `fileName` to support this.
-
-Relative timestamps in the screenshot ("2d ago", "5d ago", "18d ago", "1mo ago", "3mo ago") need a small formatting helper. Note that `/` prerenders statically, so a server-computed relative time freezes at build time — acceptable for mock data, but worth deciding deliberately.
-
-The spec references `@src/lib/mock-data.js`; the actual file is `src/lib/mock-data.ts`.
-
-Carried over from phase 2:
-
-- Favorites, Pinned, Recent and the six collection sidebar rows are still non-interactive `div`s with mouse-only collapsed tooltips. Phase 3 adds no routes for them either unless scope changes.
-- `separator` remains installed and unused.
-- Tailwind v4 via `@theme` in `globals.css`. No `tailwind.config` file — do not create one.
-- No `lint` script; `npm run build` runs the TypeScript check.
-- CLAUDE.md documents `npm run lint`, which does not exist.
-
-Decisions (confirmed at `/feature start`):
-
-1. **Add a `favorite` flag to `Collection`** in `mock-data.ts` rather than inferring it from item favorites. Favourite collections become explicit data instead of a derived guess.
-2. **Add `updatedAt` to `Collection`** for the same reason — recency is real data, and it stays meaningful for a collection with no items. Seeded from the newest item in each collection so the two stay consistent.
-3. **Follow the spec's section layout**, not the screenshot's flat grid: stat cards, then Recent Collections, Pinned Items, and Recent Items, reusing the screenshot's card design inside each section.
-4. **Build a working grid/list toggle** with real state, beyond what the spec asks for. One toggle controls both item sections.
-
-Implementation constraint: relative timestamps must be computed on the server and passed down as strings. `/` prerenders statically, so calling `Date.now()` inside a client component would produce a different value at hydration than at build and trip a hydration mismatch.
 
 ## History
 
