@@ -37,7 +37,7 @@ export type TypeNavEntry = {
   href: string
 }
 
-const TYPE_ICONS: Record<ItemTypeId, LucideIcon> = {
+export const TYPE_ICONS: Record<ItemTypeId, LucideIcon> = {
   snippet: Code2,
   prompt: Sparkles,
   note: FileText,
