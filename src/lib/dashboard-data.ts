@@ -19,7 +19,8 @@ export type DashboardStat = {
 
 /** An item plus the presentation-ready fields the card needs. */
 export type DashboardItem = Item & {
-  collectionName: string
+  /** Empty when the item belongs to no collection. */
+  collectionNames: string[]
   typeLabel: string
   updatedLabel: string
 }
@@ -44,12 +45,14 @@ const TYPE_LABELS: Record<ItemTypeId, string> = {
 const byUpdatedAtDesc = <T extends { updatedAt: string }>(a: T, b: T) =>
   new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
 
-const collectionName = (id: string) =>
-  collections.find((collection) => collection.id === id)?.name ?? 'Uncategorized'
+const collectionNames = (ids: string[]) =>
+  ids
+    .map((id) => collections.find((collection) => collection.id === id)?.name)
+    .filter((name): name is string => Boolean(name))
 
 const toDashboardItem = (item: Item, now: number): DashboardItem => ({
   ...item,
-  collectionName: collectionName(item.collectionId),
+  collectionNames: collectionNames(item.collectionIds),
   typeLabel: TYPE_LABELS[item.type],
   updatedLabel: formatRelativeTime(item.updatedAt, now),
 })
@@ -76,8 +79,8 @@ export const getRecentCollections = (
     .sort(byUpdatedAtDesc)
     .slice(0, RECENT_COLLECTION_LIMIT)
     .map((collection) => {
-      const collectionItems = items.filter(
-        (item) => item.collectionId === collection.id,
+      const collectionItems = items.filter((item) =>
+        item.collectionIds.includes(collection.id),
       )
       return {
         ...collection,

@@ -44,7 +44,7 @@ const ItemCard = ({ item, view }: Props) => {
             )}
           </div>
           <p className="truncate text-xs text-muted-foreground">
-            {item.typeLabel} · {item.collectionName}
+            {[item.typeLabel, ...item.collectionNames].join(' · ')}
           </p>
         </div>
       </div>
