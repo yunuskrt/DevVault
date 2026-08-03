@@ -1,42 +1,18 @@
 # Current Feature
 
-Item Collections and Descriptions
-
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-Let an item belong to any number of collections instead of exactly one, and give both items and collections an optional description.
-
-### 1. Membership is many-to-many
-
-Replace `collectionId: string` on `Item` with `collectionIds: string[]`. An empty array means the item is filed nowhere, which is a normal state rather than an error.
-
-The relationship is stored on the item only. `Collection` does not gain an `itemIds` array.
-
-### 2. Optional descriptions
-
-Add `description?: string` to both `Item` and `Collection`.
-
-### 3. Logic updates
-
-- `itemsInCollection` in `dashboard-nav.ts` and the collection filter in `dashboard-data.ts` match with `includes` instead of equality.
-- `DashboardItem.collectionName: string` becomes `collectionNames: string[]`.
-- `ItemCard` renders the type label joined with every collection name, and the type label alone when there are none.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-- Membership lives on the item because Git is the source of truth and items are files with YAML frontmatter: the membership travels inside the item's own file. An `itemIds` index on `Collection` would be a separate file rewritten on every add, delete or move — a merge-conflict magnet for the two-computer sync story — and could hold ids of deleted items. Deleting an item file drops its memberships atomically.
-- The cost is that per-collection counts are an O(items) filter. Irrelevant over 12 mock items; a derived index can be added later without changing the stored shape.
-- Descriptions are data only for now. Nothing renders them yet.
 
 ## History
 
@@ -118,3 +94,23 @@ Known gaps and follow-ups:
 - `/collections` and `/items/[type]` are both stubs; `/collections` renders only a `MainHeader` and a placeholder heading.
 - `getDominantTypeColor` is called twice per collection in `dashboard-nav.ts` (once for color, once via a second `itemsInCollection` pass for the count). Fine at module scope over 12 mock items; revisit when data comes from the filesystem.
 - Carried forward untouched: the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, and the type/collection counts are still evaluated once at module scope.
+
+### Item Collections and Descriptions — 2026-08-04
+
+Made item-to-collection membership many-to-many and gave items and collections an optional description.
+
+`Item.collectionId: string` became `collectionIds: string[]` in `mock-data.ts`. An empty array is a normal state — an item filed nowhere — not an error. The relationship is stored on the item only; `Collection` deliberately did not gain an `itemIds` array. The reason is the Git storage model: items are files with YAML frontmatter, so membership stored on the item travels inside the item's own file. An `itemIds` index would be a separate file rewritten on every add, delete or move, which is exactly the merge-conflict magnet the multi-computer sync story has to avoid, and it could retain ids of deleted items. Deleting an item file now drops its memberships atomically. The cost is that per-collection counts are an O(items) filter; irrelevant over 12 mock items, and a derived index can be added later without changing the stored shape.
+
+`description?: string` was added to both `Item` and `Collection`. It is data only — nothing renders it yet, since putting it on `ItemCard` or the Recent Collections card is a layout change that was not part of this feature.
+
+Readers updated: `itemsInCollection` in `dashboard-nav.ts` and the collection filter in `dashboard-data.ts` match with `includes`; `DashboardItem.collectionName: string` became `collectionNames: string[]`; and `ItemCard` renders `[typeLabel, ...collectionNames].join(' · ')`, which degrades to the type label alone when the item is unfiled. The duplicate `itemsInCollection` call in `collectionNav` flagged in the previous feature was folded into a single pass while editing those lines.
+
+Mock data now exercises all three cardinalities: two items in two collections (`Docker networking notes`, `Commit message writer`), two in none (`MongoDB index strategy`, `Tailwind config reference`), the rest in one. Five of six collections carry a description and eight of twelve items do, so the optional path is exercised too.
+
+Verified from the rendered HTML on the dev server: cards read `Note · DevOps & Commands · Context Files`, `Prompt · AI Prompts · DevOps & Commands` and a bare `URL`; sidebar counts and derived dots are React Patterns 2 blue, AI Prompts 2 purple, DevOps & Commands 4 orange, plus Python Snippets 1 blue on the recent cards. `/collections` and `/items/note` both return 200 and the dev log was clean.
+
+Known gaps and follow-ups:
+
+- Descriptions render nowhere. Wiring them into `ItemCard` and the Recent Collections card is the obvious next step.
+- `Resources & Links` is now empty, which is the only collection exercising the "no dominant type → muted dot" fallback. It sorts 6th by `updatedAt`, so it appears in neither the sidebar's top 3 nor the top 4 recent cards, and the muted dot is still not visible anywhere on the dashboard. `/collections` is the place it would show up once that page lists collections.
+- Carried forward untouched: collection rows are still non-interactive `div`s, `/collections` and `/items/[type]` are still stubs, the sidebar's "Recent" count still means `items.length`, and `separator` is still installed and unused.
