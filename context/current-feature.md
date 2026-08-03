@@ -1,81 +1,16 @@
 # Current Feature
 
-Sidebar UI Improvements
-
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-Give item types their own icons and colors, derive collection colors from content instead of storing them, restructure the nav into two collapsible sections, and pin the header and Git sync panel so only the middle scrolls.
-
-### 1. Item type icons and colors
-
-Replace `TYPE_ICONS` in `src/lib/dashboard-nav.ts` with a single meta map holding both icon and color:
-
-| Type    | Icon             | Color     |
-| ------- | ---------------- | --------- |
-| Snippet | `Code2`          | `#3b82f6` |
-| Prompt  | `Sparkles`       | `#a855f7` |
-| Command | `SquareTerminal` | `#f59553` |
-| Note    | `NotebookPen`    | `#eab308` |
-| File    | `FileText`       | `#8996a3` |
-| Image   | `Image`          | `#e868e8` |
-| URL     | `Link2`          | `#22c55e` |
-
-Icon changes from today: `note` moves `FileText` → `NotebookPen`, and `file` moves `File` → `FileText`. The other five keep their icon.
-
-Type rows under TYPES render their icon in the assigned color. Scope is the sidebar — `ItemCard` picks up the new icons because it reads the same map, but its icon chip stays monochrome.
-
-### 2. Collection colors are derived, not stored
-
-Remove `color` from `Collection` in `src/lib/mock-data.ts` and from all six entries.
-
-A collection's dot color is the color of its most common item type. On a tie, the highest-priority type wins:
-
-1. Snippet
-2. Prompt
-3. Command
-4. Note
-5. File
-6. Image
-7. URL
-
-A collection with no items has no dominant type and falls back to a muted dot.
-
-This also applies to the dashboard's Recent Collections cards, which read the stored color today.
-
-### 3. Sidebar structure
-
-- TYPES section above COLLECTIONS (currently reversed).
-- Both sections collapsible via their heading.
-- COLLECTIONS shows at most 3 collections, sorted by `updatedAt` descending, followed by a "View all collections" link to `/collections`.
-- Discard the screenshot's PRO badges and its FAVORITES / ALL COLLECTIONS split — one flat list.
-- The primary nav (All Items, Favorites, Pinned, Recent) stays where it is, above TYPES.
-
-### 4. Layout
-
-- Header (logo + New Item) pinned at the top, always visible.
-- Git sync panel pinned at the bottom, always visible, made subtler with a plain divider above it instead of its current card treatment.
-- Middle region scrolls when the content overflows.
-- Applies to the collapsed desktop rail and the mobile sheet as well.
-
-### 5. New route
-
-`/collections` stub page so the "View all collections" link does not 404, matching the phase 2 decision to stub `/items/[type]`.
-
-Reference: `context/screenshots/sidebar-ui-content.png`.
-
 ## Notes
-
-- Type colors are given as fixed hex, one value for both themes. They are applied through the same inline-style path `SidebarRow` already uses for the collection dot, rather than as new theme tokens.
-- Section collapse state is local to `SidebarContent`. The desktop aside and the mobile sheet render separate instances, so their collapse state is independent — acceptable, since only one is visible at a time.
-- When the desktop rail is collapsed to icons, section headings are hidden and every row renders; the collapse toggles are only reachable in the expanded sidebar.
 
 <!-- Any extra notes -->
 
@@ -139,3 +74,23 @@ Known gaps and follow-ups:
 - All counts are evaluated once at module scope and `/` is statically prerendered. Moving to Git-backed storage means moving these into a request-time or filesystem-read path.
 - Carried forward untouched: the non-interactive sidebar rows with mouse-only collapsed tooltips, `separator` still unused, and CLAUDE.md's nonexistent `npm run lint`.
 - `/items/[type]` still renders the phase 2 stub. Now that `ItemCard` exists, those pages could list their items with almost no new code.
+
+### Sidebar UI Improvements — 2026-08-04
+
+Gave item types their own icons and colors, made collection colors derived rather than stored, restructured the sidebar into two collapsible sections, and pinned the header and Git sync panel so only the middle scrolls.
+
+`src/lib/item-types.ts` is the new home for item-type presentation. `ITEM_TYPE_META` maps each `ItemTypeId` to both an icon and a hex color, replacing `TYPE_ICONS` in `dashboard-nav.ts`; `note` moved `FileText` → `NotebookPen` and `file` moved `File` → `FileText`. It sits below `dashboard-nav.ts` and `dashboard-data.ts` in the import graph so both can read it without a cycle. Type rows render their icon in the assigned color via a new `iconColor` prop on `SidebarRow`; `ItemCard` reads the same map so it picks up the icon changes while its chip stays monochrome.
+
+`getDominantTypeColor` lives alongside the meta map: a collection's dot is the color of its most common item type, with `TYPE_PRIORITY` (snippet → prompt → command → note → file → image → url) breaking ties and `undefined` for an empty collection. `color` is gone from `Collection` in `mock-data.ts` and from all six entries; `collectionNav` and `getRecentCollections` compute it instead. `SidebarRow` gained an explicit `dot` prop because the marker used to be chosen by `dotColor` being present, which no longer works now that a colorless collection still needs a (muted) dot.
+
+`SidebarSection` owns the collapsible heading — a real `button` with `aria-expanded`/`aria-controls`, returning children unwrapped when the rail is collapsed so icon-only mode still shows every row. TYPES now sits above COLLECTIONS, and `collectionNav` caps at `SIDEBAR_COLLECTION_LIMIT = 3` sorted by `updatedAt` descending, followed by a "View all collections" link to the new `/collections` stub. The screenshot's PRO badges and FAVORITES / ALL COLLECTIONS split were deliberately dropped.
+
+Layout is now header / scroll / footer: `shrink-0` on the header, New Item button and `GitSyncPanel`, with `min-h-0` on the flex column and the `ScrollArea` so the middle actually scrolls instead of pushing the panel off-screen. The sync panel lost its card treatment for a plain top divider and smaller muted text.
+
+Known gaps and follow-ups:
+
+- Collection rows are still non-interactive `div`s with mouse-only collapsed tooltips, unchanged from phase 2. `/collections` now exists, so per-collection routes are the natural next step.
+- Section collapse state is local to `SidebarContent`, so the desktop aside and the mobile sheet track it independently. Only one is visible at a time, so this is invisible in practice.
+- `/collections` and `/items/[type]` are both stubs; `/collections` renders only a `MainHeader` and a placeholder heading.
+- `getDominantTypeColor` is called twice per collection in `dashboard-nav.ts` (once for color, once via a second `itemsInCollection` pass for the count). Fine at module scope over 12 mock items; revisit when data comes from the filesystem.
+- Carried forward untouched: the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, and the type/collection counts are still evaluated once at module scope.
