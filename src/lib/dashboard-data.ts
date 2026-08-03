@@ -23,6 +23,8 @@ export type DashboardItem = Item & {
   collectionNames: string[]
   typeLabel: string
   updatedLabel: string
+  /** What the card's copy button writes to the clipboard. */
+  copyText: string
 }
 
 export type DashboardCollection = Collection & {
@@ -50,11 +52,20 @@ const collectionNames = (ids: string[]) =>
     .map((id) => collections.find((collection) => collection.id === id)?.name)
     .filter((name): name is string => Boolean(name))
 
+/**
+ * Not every type stores its payload in `content`: url items carry `url` and
+ * file/image items carry `fileName`. Falling back to the title keeps the copy
+ * button from silently doing nothing.
+ */
+const copyTextFor = (item: Item) =>
+  item.content ?? item.url ?? item.fileName ?? item.title
+
 const toDashboardItem = (item: Item, now: number): DashboardItem => ({
   ...item,
   collectionNames: collectionNames(item.collectionIds),
   typeLabel: TYPE_LABELS[item.type],
   updatedLabel: formatRelativeTime(item.updatedAt, now),
+  copyText: copyTextFor(item),
 })
 
 export const getDashboardStats = (): DashboardStat[] => [

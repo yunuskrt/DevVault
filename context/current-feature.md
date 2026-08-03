@@ -1,18 +1,40 @@
-# Current Feature
+# Current Feature: Item Card UI Redesign
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-Not Started
+In Progress
 
 ## Goals
 
 <!-- Goals & requirements -->
 
+Redesign `ItemCard` only. Collection cards (`RecentCollections`) are explicitly out of scope.
+
+- Keep the pin icon and star icon when the item is pinned or favorite.
+- Keep the title in its current position.
+- Remove the item type text and the collection names line (the `Note · DevOps & Commands` row).
+- Show the item `description` where the content preview currently is, with proper overflow handling (clamped, no layout break).
+- Keep the tags and the date text in their current positions.
+- Add a copy icon in the bottom right, next to the date text. Clicking it copies the item and toasts "Content Copied To The Clipboard".
+- Render the item-type icon in that type's color from `ITEM_TYPE_META` (currently monochrome `text-muted-foreground`).
+- Give the card a left border in the item-type color, styled to look deliberate rather than a plain 4px stripe.
+
 ## Notes
 
 <!-- Any extra notes -->
+
+Files in play: [ItemCard.tsx](src/components/dashboard/ItemCard.tsx), [ItemPreview.tsx](src/components/dashboard/ItemPreview.tsx), [item-types.ts](src/lib/item-types.ts), [dashboard-data.ts](src/lib/dashboard-data.ts).
+
+Decisions to make at `/feature start`:
+
+- **Toast library.** Nothing is installed. shadcn's `sonner` is the natural fit and needs a `<Toaster />` in the root layout.
+- **Copy makes the card a client component.** `ItemCard` is presentational today; the clipboard write and toast need `'use client'` (or a small client-only copy button child, which keeps the card a server component).
+- **What "content" means for the copy.** Only some items have `content`. `url` items carry `url`, `file`/`image` carry `fileName`. Needs a defined fallback order so the copy button is never a no-op.
+- **Missing descriptions.** 4 of 12 mock items have no `description`. Needs a decided fallback — content excerpt, nothing, or muted placeholder — so those cards don't collapse.
+- **`ItemPreview` goes unused** in grid view once the description replaces the content preview. Decide whether to delete it or leave it for a future item detail view.
+- **List view** currently renders no preview and no tags. Confirm the redesign applies to grid only, or define the list equivalent.
 
 ## History
 
