@@ -1,9 +1,20 @@
-import React from 'react'
+import React from "react";
+import TopBar from "@/components/dashboard/TopBar";
+import Sidebar from "@/components/dashboard/Sidebar";
+import MainArea from "@/components/dashboard/MainArea";
 
-type Props = {}
+type Props = {};
 
 const Home = ({}: Props) => {
-  return <div>DevVault</div>
-}
+  return (
+    <div className="flex h-dvh flex-col">
+      <TopBar />
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar />
+        <MainArea />
+      </div>
+    </div>
+  );
+};
 
-export default Home
+export default Home;
