@@ -6,6 +6,7 @@ import {
   type ItemTypeId,
 } from '@/lib/mock-data'
 import { formatRelativeTime } from '@/lib/format'
+import { getDominantTypeColor } from '@/lib/item-types'
 
 const RECENT_ITEM_LIMIT = 10
 const RECENT_COLLECTION_LIMIT = 4
@@ -26,6 +27,8 @@ export type DashboardItem = Item & {
 export type DashboardCollection = Collection & {
   count: number
   updatedLabel: string
+  /** Derived from the collection's most common item type. */
+  color?: string
 }
 
 const TYPE_LABELS: Record<ItemTypeId, string> = {
@@ -72,11 +75,17 @@ export const getRecentCollections = (
   [...collections]
     .sort(byUpdatedAtDesc)
     .slice(0, RECENT_COLLECTION_LIMIT)
-    .map((collection) => ({
-      ...collection,
-      count: items.filter((item) => item.collectionId === collection.id).length,
-      updatedLabel: formatRelativeTime(collection.updatedAt, now),
-    }))
+    .map((collection) => {
+      const collectionItems = items.filter(
+        (item) => item.collectionId === collection.id,
+      )
+      return {
+        ...collection,
+        count: collectionItems.length,
+        updatedLabel: formatRelativeTime(collection.updatedAt, now),
+        color: getDominantTypeColor(collectionItems),
+      }
+    })
 
 export const getPinnedItems = (now: number = Date.now()): DashboardItem[] =>
   items

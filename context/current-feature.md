@@ -1,18 +1,81 @@
 # Current Feature
 
-<!-- Feature Name -->
+Sidebar UI Improvements
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-Not Started
+In Progress
 
 ## Goals
 
 <!-- Goals & requirements -->
 
+Give item types their own icons and colors, derive collection colors from content instead of storing them, restructure the nav into two collapsible sections, and pin the header and Git sync panel so only the middle scrolls.
+
+### 1. Item type icons and colors
+
+Replace `TYPE_ICONS` in `src/lib/dashboard-nav.ts` with a single meta map holding both icon and color:
+
+| Type    | Icon             | Color     |
+| ------- | ---------------- | --------- |
+| Snippet | `Code2`          | `#3b82f6` |
+| Prompt  | `Sparkles`       | `#a855f7` |
+| Command | `SquareTerminal` | `#f59553` |
+| Note    | `NotebookPen`    | `#eab308` |
+| File    | `FileText`       | `#8996a3` |
+| Image   | `Image`          | `#e868e8` |
+| URL     | `Link2`          | `#22c55e` |
+
+Icon changes from today: `note` moves `FileText` → `NotebookPen`, and `file` moves `File` → `FileText`. The other five keep their icon.
+
+Type rows under TYPES render their icon in the assigned color. Scope is the sidebar — `ItemCard` picks up the new icons because it reads the same map, but its icon chip stays monochrome.
+
+### 2. Collection colors are derived, not stored
+
+Remove `color` from `Collection` in `src/lib/mock-data.ts` and from all six entries.
+
+A collection's dot color is the color of its most common item type. On a tie, the highest-priority type wins:
+
+1. Snippet
+2. Prompt
+3. Command
+4. Note
+5. File
+6. Image
+7. URL
+
+A collection with no items has no dominant type and falls back to a muted dot.
+
+This also applies to the dashboard's Recent Collections cards, which read the stored color today.
+
+### 3. Sidebar structure
+
+- TYPES section above COLLECTIONS (currently reversed).
+- Both sections collapsible via their heading.
+- COLLECTIONS shows at most 3 collections, sorted by `updatedAt` descending, followed by a "View all collections" link to `/collections`.
+- Discard the screenshot's PRO badges and its FAVORITES / ALL COLLECTIONS split — one flat list.
+- The primary nav (All Items, Favorites, Pinned, Recent) stays where it is, above TYPES.
+
+### 4. Layout
+
+- Header (logo + New Item) pinned at the top, always visible.
+- Git sync panel pinned at the bottom, always visible, made subtler with a plain divider above it instead of its current card treatment.
+- Middle region scrolls when the content overflows.
+- Applies to the collapsed desktop rail and the mobile sheet as well.
+
+### 5. New route
+
+`/collections` stub page so the "View all collections" link does not 404, matching the phase 2 decision to stub `/items/[type]`.
+
+Reference: `context/screenshots/sidebar-ui-content.png`.
+
 ## Notes
+
+- Type colors are given as fixed hex, one value for both themes. They are applied through the same inline-style path `SidebarRow` already uses for the collection dot, rather than as new theme tokens.
+- Section collapse state is local to `SidebarContent`. The desktop aside and the mobile sheet render separate instances, so their collapse state is independent — acceptable, since only one is visible at a time.
+- When the desktop rail is collapsed to icons, section headings are hidden and every row renders; the collapse toggles are only reachable in the expanded sidebar.
 
 <!-- Any extra notes -->
 
