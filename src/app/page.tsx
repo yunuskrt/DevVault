@@ -1,20 +1,17 @@
-import React from "react";
-import TopBar from "@/components/dashboard/TopBar";
-import Sidebar from "@/components/dashboard/Sidebar";
-import MainArea from "@/components/dashboard/MainArea";
+import React from 'react'
+import MainHeader from '@/components/dashboard/MainHeader'
 
-type Props = {};
+type Props = {}
 
 const Home = ({}: Props) => {
   return (
-    <div className="flex h-dvh flex-col">
-      <TopBar />
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
-        <MainArea />
+    <>
+      <MainHeader title="All Items" subtitle="Everything in your vault" />
+      <div className="p-6">
+        <h2 className="text-lg font-semibold">Main</h2>
       </div>
-    </div>
-  );
-};
+    </>
+  )
+}
 
-export default Home;
+export default Home

@@ -1,13 +1,11 @@
-import React from "react";
+import React from 'react'
 
-type Props = {};
+type Props = {
+  children: React.ReactNode
+}
 
-const MainArea = ({}: Props) => {
-  return (
-    <main className="flex-1 overflow-y-auto p-6">
-      <h2 className="text-lg font-semibold">Main</h2>
-    </main>
-  );
-};
+const MainArea = ({ children }: Props) => {
+  return <main className="flex-1 overflow-y-auto">{children}</main>
+}
 
-export default MainArea;
+export default MainArea
