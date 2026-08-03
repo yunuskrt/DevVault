@@ -1,4 +1,4 @@
-# Current Feature: Dashboard UI Phase 2
+# Current Feature
 
 <!-- Feature Name -->
 
@@ -6,49 +6,15 @@
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-- Build out the real sidebar, replacing the phase 1 `h2` placeholder. Import `src/lib/mock-data.ts` directly; no Git wiring this phase.
-- Brand header at the top of the sidebar: DevVault mark, "knowledge, versioned" tagline, and a collapse toggle.
-- "New Item" button in the sidebar (display only, as in phase 1).
-- Primary nav with counts derived from mock data: All Items (12), Favorites (5), Pinned (3), Recent (12).
-- COLLECTIONS section listing all 6 collections with their color dot and item count.
-- TYPES section listing all 7 item types with counts, each linking to `/items/[type]`.
-- Collapsible sidebar on desktop, toggled by the drawer icon; collapsed state should stay usable (icons remain reachable).
-- Always a drawer on mobile — this closes the phase 1 gap where `Sidebar` was `hidden md:block` and mobile had no navigation at all.
-- Bottom status area (see the open question below on avatar vs. Git sync).
-- Move the shell from `src/app/page.tsx` into a layout so `/` and `/items/[type]` share it.
-- `npm run build` passes.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-Spec: `context/features/dashboard-phase-2-spec.md`
-Reference UI: `context/screenshots/dashboard-ui-main.png`
-
-Phase 2 of 3. Sidebar-focused; the main area stays a placeholder until phase 3 (recent collections, pinned items, recent items, stat cards).
-
-Counts verified against `src/lib/mock-data.ts` — collections total 12 (2/1/2/2/4/1) and types total 12 (3/2/2/2/1/1/1), matching the screenshot. Derive them at render time rather than hardcoding.
-
-Carried over from phase 1:
-
-- `separator` and `scroll-area` are installed but unused — both are intended for this sidebar.
-- The shell lives in `page.tsx`; introducing `/items/[type]` forces the move to `layout.tsx`.
-- Tailwind v4 via `@theme` in `globals.css`. No `tailwind.config` file — do not create one.
-- No `lint` script; `npm run build` runs the TypeScript check.
-- Sidebar will now need `'use client'` for collapse/drawer state — keep it scoped to the interactive parts.
-
-Decisions (confirmed at `/feature start`):
-
-1. **Sidebar footer is a Git sync panel**, not a user avatar — branch name, sync status, last push, Sync action, all display-only mock. The spec's "user avatar area" line is superseded: it does not appear in the screenshot and the local-first MVP has no auth to populate it.
-2. **Singular type routes matching `ItemTypeId`** — `/items/snippet`, not `/items/snippets`. The route param is the id directly, so no pluralize/parse mapping layer is needed and the param stays type-safe. Departs from the spec's `/items/snippets` example.
-3. **Ship a minimal stub page** at `/items/[type]` rendering the type name and its item count, so no link 404s. Real listing UI is deferred.
-4. **`TopBar` is removed this phase.** "New Item" moves into the sidebar and search moves into the main column under an "All Items" heading, matching the screenshot.
 
 ## History
 
