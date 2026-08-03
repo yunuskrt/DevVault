@@ -1,40 +1,18 @@
-# Current Feature: Item Card UI Redesign
+# Current Feature
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-Redesign `ItemCard` only. Collection cards (`RecentCollections`) are explicitly out of scope.
-
-- Keep the pin icon and star icon when the item is pinned or favorite.
-- Keep the title in its current position.
-- Remove the item type text and the collection names line (the `Note · DevOps & Commands` row).
-- Show the item `description` where the content preview currently is, with proper overflow handling (clamped, no layout break).
-- Keep the tags and the date text in their current positions.
-- Add a copy icon in the bottom right, next to the date text. Clicking it copies the item and toasts "Content Copied To The Clipboard".
-- Render the item-type icon in that type's color from `ITEM_TYPE_META` (currently monochrome `text-muted-foreground`).
-- Give the card a left border in the item-type color, styled to look deliberate rather than a plain 4px stripe.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-Files in play: [ItemCard.tsx](src/components/dashboard/ItemCard.tsx), [ItemPreview.tsx](src/components/dashboard/ItemPreview.tsx), [item-types.ts](src/lib/item-types.ts), [dashboard-data.ts](src/lib/dashboard-data.ts).
-
-Decisions to make at `/feature start`:
-
-- **Toast library.** Nothing is installed. shadcn's `sonner` is the natural fit and needs a `<Toaster />` in the root layout.
-- **Copy makes the card a client component.** `ItemCard` is presentational today; the clipboard write and toast need `'use client'` (or a small client-only copy button child, which keeps the card a server component).
-- **What "content" means for the copy.** Only some items have `content`. `url` items carry `url`, `file`/`image` carry `fileName`. Needs a defined fallback order so the copy button is never a no-op.
-- **Missing descriptions.** 4 of 12 mock items have no `description`. Needs a decided fallback — content excerpt, nothing, or muted placeholder — so those cards don't collapse.
-- **`ItemPreview` goes unused** in grid view once the description replaces the content preview. Decide whether to delete it or leave it for a future item detail view.
-- **List view** currently renders no preview and no tags. Confirm the redesign applies to grid only, or define the list equivalent.
 
 ## History
 
@@ -136,3 +114,32 @@ Known gaps and follow-ups:
 - Descriptions render nowhere. Wiring them into `ItemCard` and the Recent Collections card is the obvious next step.
 - `Resources & Links` is now empty, which is the only collection exercising the "no dominant type → muted dot" fallback. It sorts 6th by `updatedAt`, so it appears in neither the sidebar's top 3 nor the top 4 recent cards, and the muted dot is still not visible anywhere on the dashboard. `/collections` is the place it would show up once that page lists collections.
 - Carried forward untouched: collection rows are still non-interactive `div`s, `/collections` and `/items/[type]` are still stubs, the sidebar's "Recent" count still means `items.length`, and `separator` is still installed and unused.
+
+### Item Card UI Redesign — 2026-08-04
+
+Rebuilt `ItemCard` around the description, added a clipboard copy button, and gave each card its item type's colour. Collection cards were explicitly out of scope and are untouched.
+
+The content preview is gone: `ItemPreview` was deleted and `description` renders in its place. The type-and-collections line (`Note · DevOps & Commands`) was removed entirely, so `typeLabel` and `collectionNames` on `DashboardItem` are now unused by the card but kept on the type, since they cost nothing and the item detail view will want them.
+
+Colour comes from the existing `ITEM_TYPE_META`, so nothing new was introduced to describe a type. Each card gets a 4px left accent — `linear-gradient(to bottom, color, color33)` rather than a flat stripe — and an icon chip tinted `color1f` with the icon itself in full colour. These are inline styles because the values are per-item hex from data; this follows the precedent `SidebarRow` already set for `iconColor`/`dotColor`. The card's `hover:border-ring/60` was a no-op — shadcn's `Card` uses `ring-1`, not `border` — so it became `hover:ring-ring/40`.
+
+Equal card size was a requirement, and every varying-height element is pinned: the title truncates to one line, the description occupies a fixed `h-10` block (grid) or `h-5` line (list) that stays reserved when the item has none, and the footer sits on `mt-auto` as a single non-wrapping row. Tags clip rather than wrap for the same reason, with a `mask-image` fading the cut edge so a badge is never sliced in half; the mask sits over empty space when the tags already fit, so it is invisible in the normal case.
+
+List view got the same treatment on a fixed column track after a first pass left it ragged: icon, then a stacked title-over-description block with the title at `sm:w-56` so the pin/star markers land at the same x on every row, then tags at `w-44`, then a `w-20` right-aligned date and the copy button. Without the fixed widths the markers floated with title length and nothing lined up row to row.
+
+Decisions taken at `/feature start`:
+
+- **Toast.** Added shadcn `sonner` with `<Toaster />` in the root layout. It pulled in `next-themes`, but the app has no `ThemeProvider` — `useTheme()` would have returned `system` and rendered a light toast against the hardcoded-dark app — so the Toaster is pinned to `theme="dark"` to match the `dark` class on `<html>` and `next-themes` was uninstalled. A comment marks where to revisit if a real theme provider lands.
+- **Copy source.** `copyText` on `DashboardItem` resolves `content ?? url ?? fileName ?? title` in `dashboard-data.ts`. Only some types store a payload in `content`; url items carry `url` and file/image items carry `fileName`, so without the chain the button would have been a no-op on four of twelve items.
+- **`CopyButton` is the only new client component.** Keeping the clipboard write and toast in a small child leaves `ItemCard` a server component. A failed `navigator.clipboard.writeText` toasts an error rather than failing silently.
+- **Missing descriptions render nothing** (user's call), with the reserved-height blocks above making that invisible in the layout.
+
+Verified by build and by the rendered HTML on the dev server: 13 cards each carry the correct per-type gradient and icon tint (4 blue, 3 purple, 2 pink, 1 each green/grey/yellow/orange), descriptions render, the type-and-collection line is absent, and all 13 copy buttons have distinct `Copy <title>` labels. `npm run build` passes and the dev log is clean.
+
+Known gaps and follow-ups:
+
+- **Not visually verified.** No Playwright was available in the session, so the accent gradient, the tag fade mask and the toast were confirmed structurally rather than by eye. Worth a look before building on top of this.
+- `typeLabel` and `collectionNames` are computed on every `DashboardItem` but nothing renders them now. Leave them until the detail view exists, then decide.
+- The `mask-image` tag fade has no `-webkit-` fallback; fine for current browsers, but Safari below 15.4 would clip hard instead of fading.
+- List view hides tags below `lg` and the whole description column is only as wide as the row allows. Narrow desktop windows show a fairly bare row.
+- Carried forward untouched: collection rows are still non-interactive `div`s, `/collections` and `/items/[type]` are still stubs, the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, and CLAUDE.md still documents a nonexistent `npm run lint`.
