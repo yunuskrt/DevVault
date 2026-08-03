@@ -16,6 +16,5 @@ Read the following to get the full context of the project:
 - **Dev server**: `npm run dev` (runs on http://localhost:3000)
 - **Build**: `npm run build`
 - **Production server**: `npm run start`
-- **Lint**: `npm run lint`
 
 **IMPORTANT:** Do not add Claude to any commit messages
