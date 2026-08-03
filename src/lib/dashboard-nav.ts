@@ -30,7 +30,7 @@ export type TypeNavEntry = {
 }
 
 const itemsInCollection = (collectionId: string) =>
-  items.filter((item) => item.collectionId === collectionId)
+  items.filter((item) => item.collectionIds.includes(collectionId))
 
 export const primaryNav: PrimaryNavEntry[] = [
   { id: 'all', label: 'All Items', icon: Layers, count: items.length, href: '/' },
@@ -52,12 +52,15 @@ export const primaryNav: PrimaryNavEntry[] = [
 export const collectionNav: CollectionNavEntry[] = [...collections]
   .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
   .slice(0, SIDEBAR_COLLECTION_LIMIT)
-  .map((collection) => ({
-    id: collection.id,
-    name: collection.name,
-    color: getDominantTypeColor(itemsInCollection(collection.id)),
-    count: itemsInCollection(collection.id).length,
-  }))
+  .map((collection) => {
+    const collectionItems = itemsInCollection(collection.id)
+    return {
+      id: collection.id,
+      name: collection.name,
+      color: getDominantTypeColor(collectionItems),
+      count: collectionItems.length,
+    }
+  })
 
 export const typeNav: TypeNavEntry[] = itemTypes.map((type) => ({
   id: type.id,

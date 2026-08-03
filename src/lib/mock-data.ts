@@ -15,6 +15,7 @@ export type ItemType = {
 export type Collection = {
   id: string
   name: string
+  description?: string
   favorite: boolean
   updatedAt: string
 }
@@ -23,7 +24,9 @@ export type Item = {
   id: string
   title: string
   type: ItemTypeId
-  collectionId: string
+  description?: string
+  /** An item can belong to any number of collections, including none. */
+  collectionIds: string[]
   tags: string[]
   favorite: boolean
   pinned: boolean
@@ -49,30 +52,35 @@ export const collections: Collection[] = [
   {
     id: 'react-patterns',
     name: 'React Patterns',
+    description: 'Hooks, composition patterns and component recipes.',
     favorite: true,
     updatedAt: '2026-08-01T16:05:00Z',
   },
   {
     id: 'python-snippets',
     name: 'Python Snippets',
+    description: 'Reusable Python one-liners and cheatsheets.',
     favorite: true,
     updatedAt: '2026-07-02T19:25:00Z',
   },
   {
     id: 'ai-prompts',
     name: 'AI Prompts',
+    description: 'System prompts and workflows worth keeping.',
     favorite: true,
     updatedAt: '2026-07-29T08:40:00Z',
   },
   {
     id: 'context-files',
     name: 'Context Files',
+    description: 'Configs and diagrams to hand to an assistant.',
     favorite: false,
     updatedAt: '2026-06-30T14:20:00Z',
   },
   {
     id: 'devops-commands',
     name: 'DevOps & Commands',
+    description: 'Shell commands and operational notes.',
     favorite: false,
     updatedAt: '2026-07-16T10:15:00Z',
   },
@@ -89,7 +97,8 @@ export const items: Item[] = [
     id: 'use-debounce-hook',
     title: 'useDebounce hook',
     type: 'snippet',
-    collectionId: 'react-patterns',
+    description: 'Delays a rapidly changing value until it settles.',
+    collectionIds: ['react-patterns'],
     tags: ['react', 'hooks', 'typescript'],
     favorite: true,
     pinned: true,
@@ -113,7 +122,8 @@ export function useDebounce<T>(value: T, delay = 300): T {
     id: 'code-review-assistant',
     title: 'Code review assistant',
     type: 'prompt',
-    collectionId: 'ai-prompts',
+    description: 'Turns a diff into ranked, actionable review findings.',
+    collectionIds: ['ai-prompts'],
     tags: ['review', 'gpt-5', 'workflow'],
     favorite: true,
     pinned: true,
@@ -127,7 +137,8 @@ You are a senior engineer reviewing a pull request. For each finding, state the 
     id: 'docker-networking-notes',
     title: 'Docker networking notes',
     type: 'note',
-    collectionId: 'devops-commands',
+    description: 'Bridge, host and overlay networks compared.',
+    collectionIds: ['devops-commands', 'context-files'],
     tags: ['docker', 'networking'],
     favorite: false,
     pinned: false,
@@ -143,7 +154,8 @@ You are a senior engineer reviewing a pull request. For each finding, state the 
     id: 'prune-docker-system',
     title: 'Prune docker system',
     type: 'command',
-    collectionId: 'devops-commands',
+    description: 'Reclaims disk by removing unused images and volumes.',
+    collectionIds: ['devops-commands'],
     tags: ['docker', 'cleanup'],
     favorite: false,
     pinned: false,
@@ -156,7 +168,7 @@ You are a senior engineer reviewing a pull request. For each finding, state the 
     id: 'list-comprehension-cheatsheet',
     title: 'list_comprehension_cheatsheet',
     type: 'snippet',
-    collectionId: 'python-snippets',
+    collectionIds: ['python-snippets'],
     tags: ['python', 'cheatsheet'],
     favorite: true,
     pinned: false,
@@ -179,7 +191,8 @@ domains = {email.split("@")[1] for email in emails}`,
     id: 'mongodb-index-strategy',
     title: 'MongoDB index strategy',
     type: 'note',
-    collectionId: 'devops-commands',
+    description: 'Compound index ordering and the ESR rule.',
+    collectionIds: [],
     tags: ['mongodb', 'performance', 'database'],
     favorite: false,
     pinned: false,
@@ -193,7 +206,8 @@ Order compound index keys as **Equality**, then **Sort**, then **Range**. An ind
     id: 'tailwind-config-reference',
     title: 'Tailwind config reference',
     type: 'url',
-    collectionId: 'resources-links',
+    description: 'Official docs for theme customization.',
+    collectionIds: [],
     tags: ['tailwind', 'css', 'reference'],
     favorite: false,
     pinned: false,
@@ -205,7 +219,7 @@ Order compound index keys as **Equality**, then **Sort**, then **Range**. An ind
     id: 'architecture-diagram',
     title: 'architecture-diagram.png',
     type: 'image',
-    collectionId: 'context-files',
+    collectionIds: ['context-files'],
     tags: ['architecture', 'diagram'],
     favorite: false,
     pinned: true,
@@ -217,7 +231,8 @@ Order compound index keys as **Equality**, then **Sort**, then **Range**. An ind
     id: 'eslint-base-config',
     title: 'eslint-base-config.json',
     type: 'file',
-    collectionId: 'context-files',
+    description: 'Shared ESLint base for Next.js projects.',
+    collectionIds: ['context-files'],
     tags: ['eslint', 'config'],
     favorite: false,
     pinned: false,
@@ -237,7 +252,8 @@ Order compound index keys as **Equality**, then **Sort**, then **Range**. An ind
     id: 'compound-component-pattern',
     title: 'Compound component pattern',
     type: 'snippet',
-    collectionId: 'react-patterns',
+    description: 'Share state between related components via context.',
+    collectionIds: ['react-patterns'],
     tags: ['react', 'patterns', 'context'],
     favorite: true,
     pinned: false,
@@ -261,7 +277,8 @@ export function TabPanel({ id, children }: { id: string; children: ReactNode }) 
     id: 'commit-message-writer',
     title: 'Commit message writer',
     type: 'prompt',
-    collectionId: 'ai-prompts',
+    description: 'Turns a staged diff into a conventional commit.',
+    collectionIds: ['ai-prompts', 'devops-commands'],
     tags: ['git', 'conventional-commits'],
     favorite: true,
     pinned: false,
@@ -275,7 +292,7 @@ Read the diff and produce a single line in the form \`type(scope): summary\`, un
     id: 'reset-branch-to-remote',
     title: 'Reset branch to remote',
     type: 'command',
-    collectionId: 'devops-commands',
+    collectionIds: ['devops-commands'],
     tags: ['git', 'recovery'],
     favorite: false,
     pinned: false,

@@ -1,18 +1,42 @@
 # Current Feature
 
+Item Collections and Descriptions
+
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-Not Started
+In Progress
 
 ## Goals
 
 <!-- Goals & requirements -->
 
+Let an item belong to any number of collections instead of exactly one, and give both items and collections an optional description.
+
+### 1. Membership is many-to-many
+
+Replace `collectionId: string` on `Item` with `collectionIds: string[]`. An empty array means the item is filed nowhere, which is a normal state rather than an error.
+
+The relationship is stored on the item only. `Collection` does not gain an `itemIds` array.
+
+### 2. Optional descriptions
+
+Add `description?: string` to both `Item` and `Collection`.
+
+### 3. Logic updates
+
+- `itemsInCollection` in `dashboard-nav.ts` and the collection filter in `dashboard-data.ts` match with `includes` instead of equality.
+- `DashboardItem.collectionName: string` becomes `collectionNames: string[]`.
+- `ItemCard` renders the type label joined with every collection name, and the type label alone when there are none.
+
 ## Notes
 
 <!-- Any extra notes -->
+
+- Membership lives on the item because Git is the source of truth and items are files with YAML frontmatter: the membership travels inside the item's own file. An `itemIds` index on `Collection` would be a separate file rewritten on every add, delete or move — a merge-conflict magnet for the two-computer sync story — and could hold ids of deleted items. Deleting an item file drops its memberships atomically.
+- The cost is that per-collection counts are an O(items) filter. Irrelevant over 12 mock items; a derived index can be added later without changing the stored shape.
+- Descriptions are data only for now. Nothing renders them yet.
 
 ## History
 
