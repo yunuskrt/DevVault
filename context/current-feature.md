@@ -1,44 +1,20 @@
-# Current Feature: Collection Card UI Redesign
+# Current Feature
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-Redesign the collection card currently rendered by `RecentCollections` on the dashboard. The same card will later be reused on `/collections`, but that page stays a stub in this feature.
-
-Card layout, top to bottom:
-
-- **Top left** — colour dot then collection name, in their current position.
-- **Top right** — a vertical three-dot button. Clicking it opens a popup with **Edit** and **Delete** options, each a button with an icon and a text label.
-- **Below the title** — item count text: `<count> items`.
-- **Below the count** — the collection description.
-- **Bottom left** — the icon of the collection's most common item type, in that type's colour. If several types tie for most common, show all of them, ordered left to right by item-type importance.
-- **Bottom right** — the existing relative date text.
-
-Rules:
-
-- Item-type importance order: snippet → prompt → command → note → file → image → url.
-- The dot beside the title takes the colour of the most common item type; ties resolve by the same importance order (i.e. the colour of the leftmost bottom-left icon).
-- Cards must stay aligned with each other — the bottom row sits at the same place on every card regardless of description length.
-
 ## Notes
 
 <!-- Any extra notes -->
 
-- Files in scope: `src/components/dashboard/RecentCollections.tsx`, `src/lib/dashboard-data.ts` (`DashboardCollection`), `src/lib/item-types.ts`.
-- `getDominantTypeColor` in `item-types.ts` returns a single colour. The bottom-left row needs *all* tied dominant types, so this becomes a function returning an ordered `ItemTypeId[]`; the dot colour is then the first entry's colour, which preserves today's behaviour. `dashboard-nav.ts` also calls `getDominantTypeColor` for the sidebar dot and must be updated with it.
-- `TYPE_PRIORITY` in `item-types.ts` already encodes the required importance order.
-- The popup needs shadcn `dropdown-menu`, which is not installed yet.
-- The three-dot menu makes the card interactive, so `RecentCollections` (or a new `CollectionCard`) needs `'use client'`.
-- Open for `/feature start`: what Edit and Delete actually do. No collection routes, detail view or mutations exist, so the likely answer is display-only handlers this round.
-- `Resources & Links` is the one empty collection (no dominant type → muted dot, no bottom-left icons), but it sorts 6th by `updatedAt` so it does not appear in the 4 recent cards. The empty state stays unexercised on screen until `/collections` lists everything.
-- Description is optional on `Collection`; five of six carry one. Reserve its space so cards stay equal height.
+
 
 ## History
 
@@ -185,3 +161,29 @@ Known gaps and follow-ups:
 - The dashboard now shows the pinned count in two places — the stat card and the "Pinned Items" section heading's list. They agree today because both read `item.pinned`, but the section caps its list while the stat does not; if a limit ever bites, the numbers will diverge.
 - Not visually verified. The stat-card label change and the removed star were confirmed by build and grep, not by eye.
 - Carried forward untouched: collection rows are still non-interactive `div`s, `/collections` and `/items/[type]` are still stubs, the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, and CLAUDE.md still documents a nonexistent `npm run lint`.
+
+### Collection Card UI Redesign — 2026-08-04
+
+Rebuilt the Recent Collections card around the description and the collection's dominant item types, and gave it an actions menu. `/collections` was explicitly out of scope and still renders its stub, but the card is now a standalone component ready for it. Added shadcn `dropdown-menu`.
+
+`getDominantTypeColor` in `item-types.ts` answered the wrong question for this card. The footer needs *every* type a collection holds most of, not just the winner, so `getDominantTypes` now returns all tied types ordered by `TYPE_PRIORITY` and `getDominantTypeColor` became a two-line wrapper over it. Keeping the wrapper meant `dashboard-nav.ts` and the sidebar dot were untouched, and — more usefully — the sidebar dot and the card dot are now provably the same value rather than two implementations that agree by coincidence.
+
+`DashboardCollection.color?: string` became `dominantTypes: ItemTypeId[]`. One field drives both the dot colour (first entry) and the footer icons, so the requirement that the dot match the leftmost icon holds by construction instead of by two lookups staying in sync. `TYPE_LABELS` was exported from `dashboard-data.ts` to give the footer icons accessible names; the icons carry `role="img"` as well, since lucide only skips its default `aria-hidden` when a label is present and a bare `aria-label` on an `svg` is not reliably exposed.
+
+`CollectionCard` is a server component and `CollectionCardMenu` is the only client one, following the `CopyButton` precedent from the item card rather than the spec note's assumption that the whole card would need `'use client'`. Layout mirrors `ItemCard`: `h-full` in the grid, a one-line truncated title, a fixed `h-10` two-line description block that stays reserved when a collection has none, and a `mt-auto` footer, so the bottom row lands at the same y on every card.
+
+Decisions taken at `/feature start`:
+
+- **Edit and Delete are display-only** (user's call). No collection route, detail view or mutation layer exists, and mock data is static at module scope, so a real delete could not persist and the counts elsewhere would disagree with it.
+
+Two overrides were verified against `tailwind-merge` rather than assumed, because both fail silently: `w-36` beats the dropdown's base `w-(--radix-dropdown-menu-trigger-width)` (which would have rendered a menu the width of the 24px trigger), and `p-4` beats the card's base `py-(--card-spacing)`.
+
+Verified from the rendered HTML on the dev server. The recent-4 only exercise the single-dominant-type path, so `RECENT_COLLECTION_LIMIT` was temporarily raised to 6 and reverted: React Patterns `#3b82f6` Snippet / 2 items, AI Prompts `#a855f7` Prompt / 2 items, DevOps & Commands `#f59553` Command / 4 items, Python Snippets `#3b82f6` Snippet / **1 item** (singular), Context Files `#eab308` with Note → File → Image on a three-way tie, and Resources & Links with a muted dot, no icons and 0 items. `npm run build` and `tsc --noEmit` pass and the dev log is clean.
+
+Known gaps and follow-ups:
+
+- **Not visually verified.** Third feature running with this caveat — no Playwright in the session, so colours, the two-line clamp and the open menu were confirmed structurally. Worth clearing before more card work.
+- Clicking Edit or Delete closes the menu with no feedback at all, so "not built yet" is indistinguishable from "it broke". Fine while nothing on the dashboard mutates; revisit with the first mutation.
+- `TYPE_LABELS` in `dashboard-data.ts` duplicates `itemTypes[].label` in `mock-data.ts`. Pre-existing, but exporting it makes the duplication load-bearing in a second file. `ITEM_TYPE_META` is the natural home for a label.
+- The tie and empty cases render nowhere on the dashboard — Context Files and Resources & Links sort 5th and 6th by `updatedAt`, outside the top 4. `/collections` is where they become visible.
+- Carried forward untouched: sidebar collection rows are still non-interactive `div`s, `/collections` and `/items/[type]` are still stubs, the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, and CLAUDE.md still documents a nonexistent `npm run lint`.
