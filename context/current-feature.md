@@ -1,41 +1,18 @@
-# Current Feature: Item Type Page
+# Current Feature
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-- Replace the `/items/[type]` stub with a real listing page for the items of that type.
-- Keep the top section exactly as it is today: `MainHeader` with the type label, the `{count} items in your vault` subtitle, and the search bar.
-- Add a toolbar at the top of the main area holding a sort control on the left and a `New {Item Type}` button on the right.
-- Sort options (5): **Recently updated** (default), **Name A–Z**, **Name Z–A**, **Pinned first**, **Favorites first**.
-- Below the toolbar, list every item of that type using the existing `ItemCard`, styled like the dashboard's `Pinned Items` section.
-- Support both grid and list view with the same toggle pattern `ItemsBrowser` already uses.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-Decisions taken at `/feature load`:
-
-- **Sort set.** The user picked the six-option bundle minus "Recently created", leaving the five above. `Item` has `createdAt`, so that option can be added later with no structural change.
-- **`New {Item Type}` is display-only.** No creation flow or mutation layer exists and mock data is static at module scope, so the button renders and is focusable but does nothing on click — same call as Edit/Delete on `CollectionCardMenu`.
-
-Implementation notes:
-
-- The page is one of seven statically prerendered routes (`generateStaticParams` over `typeNav`). Timestamps must stay server-computed and passed down as finished strings — `DashboardItem.updatedLabel` already does this, and a client-side `Date.now()` would trip a hydration mismatch.
-- Sorting and the grid/list toggle are both client state, so they belong in one client component that receives serializable `DashboardItem[]` as props. `ItemCard` stays a server-renderable presentational component.
-- `dashboard-data.ts` needs a type-filtered accessor (a `getItemsByType(type, now)` alongside the existing getters). Sort comparators live there too so the page and any future views share them.
-- The existing sort helper is `byUpdatedAtDesc`, currently private to `dashboard-data.ts`.
-- "Pinned first" / "Favorites first" are orderings, not filters — flagged items float to the top and the rest follow, tie-broken by `updatedAt` descending.
-- Mock data has at least one item for all seven types (snippet 3, command 2, note 2, prompt 2, file 1, image 1, url 1), so the empty state will not appear on any current route but should still be handled.
-- `ItemsBrowser` is dashboard-specific (it hardcodes the Pinned/Recent two-section layout). Decide at `/feature start` whether to generalise it or add a sibling component for this page.
-- `separator` is installed and still unused — the toolbar is a plausible first use.
 
 
 
@@ -210,3 +187,36 @@ Known gaps and follow-ups:
 - `TYPE_LABELS` in `dashboard-data.ts` duplicates `itemTypes[].label` in `mock-data.ts`. Pre-existing, but exporting it makes the duplication load-bearing in a second file. `ITEM_TYPE_META` is the natural home for a label.
 - The tie and empty cases render nowhere on the dashboard — Context Files and Resources & Links sort 5th and 6th by `updatedAt`, outside the top 4. `/collections` is where they become visible.
 - Carried forward untouched: sidebar collection rows are still non-interactive `div`s, `/collections` and `/items/[type]` are still stubs, the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, and CLAUDE.md still documents a nonexistent `npm run lint`.
+
+### Item Type Page — 2026-08-04
+
+Replaced the `/items/[type]` stub with a real listing of that type's items, sortable and switchable between grid and list. `MainHeader` is untouched — same type label, same `{count} items in your vault`, same search bar. Added shadcn `select`.
+
+`src/lib/item-sort.ts` holds the five orderings and `sortItems`. It deliberately imports nothing at all: a client component that pulled sort logic out of `dashboard-data.ts` would drag `mock-data.ts` into the browser bundle with it, since that module imports the vault at the top. `ItemSortId` is derived from `ITEM_SORT_OPTIONS` via `as const` plus an indexed access, so the option list and the union cannot drift apart. Comparators are keyed by id in a `Record`, and `sortItems` copies before sorting rather than mutating the caller's array. "Pinned first" and "Favorites first" are orderings, not filters — `Number(b[flag]) - Number(a[flag]) || byUpdatedAtDesc`. Name sorting pins the locale to `'en'` with `sensitivity: 'base'`, so the ordering does not shift with the runtime's default and case does not split the alphabet.
+
+`getItemsByType` in `dashboard-data.ts` pre-sorts with the same `DEFAULT_ITEM_SORT` constant the client's `useState` initialises to, so the server render and the first client render agree by construction rather than by two places happening to say "recent".
+
+`ItemTypeBrowser` is the only new client component; it owns sort and view state. Rather than generalise `ItemsBrowser` — whose shape *is* the dashboard's two-section Pinned/Recent layout — the two pieces both pages actually share were extracted: `ViewToggle` (the toggle group) and `ItemGrid` (the grid/list container, the `ItemCard` map, and the optional empty state). `ItemsBrowser` dropped from 66 lines to 33 and renders identically. The inline `'grid' | 'list'` union became `ItemView` in `src/types/items.ts`, the first file in that directory.
+
+Two things surfaced during the build:
+
+- **Radix `SelectValue` renders empty on the server.** It only learns an item's label once `SelectContent` mounts, so on a statically prerendered page the sort control would have shown a blank box on first paint and filled in at hydration. Passing the label as a child (`<SelectValue>{sortLabel}</SelectValue>`) puts the text in the prerendered HTML; confirmed present rather than assumed.
+- `w-48` on the trigger had to beat the component's base `w-fit`. Checked in the rendered class list — `w-48` present, `w-fit` gone — the same silent-failure class as the `w-36`/`p-4` overrides on the collection card.
+
+Toolbar is sort on the left, then view toggle and the `New {Type}` button on the right. All three controls are `h-7`, verified against the `sm` variants in `button.tsx`, `toggle.tsx` and `select.tsx`.
+
+Decisions taken at `/feature load`:
+
+- **Five sort options** (user's call): Recently updated (default), Name A–Z, Name Z–A, Pinned first, Favorites first — the six-option bundle minus "Recently created". `Item` still carries `createdAt`, so that option drops into `ITEM_SORT_OPTIONS` later with no structural change.
+- **`New {Type}` is display-only** (user's call), matching Edit/Delete on `CollectionCardMenu`.
+
+Verified: all nine routes return 200; snippet renders 3 cards, command 2, url 1, image 1, matching the sidebar counts; the dashboard still emits 21 cards (4 stats + 4 collections + 3 pinned + 10 recent), so the `ItemsBrowser` extraction changed nothing. The comparators were exercised against synthetic data covering mixed case and both flags — `recent` newest-first, `name-asc` `Apple, banana, cherry, Date` (so case does not split), `name-desc` its exact reverse, `pinned` and `favorites` floating flagged items with a date tie-break, and the input array unmutated. `npm run build` passes with all 12 routes prerendering and the dev log is clean.
+
+Known gaps and follow-ups:
+
+- **Not visually verified.** Fourth feature with this caveat — no Playwright in the session, so the toolbar alignment, the open select and the empty state were confirmed structurally. This is overdue.
+- The `New {Type}` button gives no feedback on click, so "not built yet" looks the same as "broken" — the same gap the collection card's Edit/Delete has, now on a more prominent control.
+- The empty state cannot be seen on any current route: all seven types have at least one item.
+- `dashboard-data.ts` keeps its own generic `byUpdatedAtDesc` (it sorts collections too), so that comparator now exists in two files. Worth reconciling if collections gain a sort control.
+- The search bar in `MainHeader` is still `readOnly` on this page, so the only way to narrow a long type list is the sort control.
+- Carried forward untouched: sidebar collection rows are still non-interactive `div`s, `/collections` is still a stub, the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, and CLAUDE.md still documents a nonexistent `npm run lint`.
