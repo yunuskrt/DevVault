@@ -23,11 +23,15 @@ import ViewToggle from './ViewToggle'
 
 type Props = {
   items: DashboardItem[]
-  /** Singular label of the type, e.g. "Snippet". Names the create button. */
-  typeLabel: string
+  emptyMessage: string
+  /**
+   * Full text of the create button, e.g. "New Snippet". Omitted on views that
+   * list a subset of the vault rather than a place items are created.
+   */
+  createLabel?: string
 }
 
-const ItemTypeBrowser = ({ items, typeLabel }: Props) => {
+const ItemBrowser = ({ items, emptyMessage, createLabel }: Props) => {
   const [sort, setSort] = useState<ItemSortId>(DEFAULT_ITEM_SORT)
   const [view, setView] = useState<ItemView>('grid')
 
@@ -62,20 +66,18 @@ const ItemTypeBrowser = ({ items, typeLabel }: Props) => {
         <div className="flex items-center gap-2">
           <ViewToggle value={view} onChange={setView} />
           {/* Display-only until a creation flow exists. */}
-          <Button size="sm">
-            <Plus className="size-4" />
-            New {typeLabel}
-          </Button>
+          {createLabel && (
+            <Button size="sm">
+              <Plus className="size-4" />
+              {createLabel}
+            </Button>
+          )}
         </div>
       </div>
 
-      <ItemGrid
-        items={sorted}
-        view={view}
-        emptyMessage={`No ${typeLabel} items in your vault yet.`}
-      />
+      <ItemGrid items={sorted} view={view} emptyMessage={emptyMessage} />
     </div>
   )
 }
 
-export default ItemTypeBrowser
+export default ItemBrowser
