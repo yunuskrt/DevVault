@@ -1,43 +1,18 @@
-# Current Feature: Collection and Favorites Pages
+# Current Feature
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-- Build `/collections/[collectionId]`, listing the items that belong to that collection, built like `/items/[type]`.
-- Build `/favorites`, listing every favourited item, built like `/items/[type]`.
-- Both pages keep the `MainHeader` top section, the sort control and the grid/list toggle.
-- **Neither page gets a "New …" button** — that control is specific to `/items/[type]`.
-- Clicking a `CollectionCard` navigates to that collection's page.
-- Clicking a collection row in the sidebar navigates to that collection's page.
-- Clicking the sidebar's Favorites row navigates to `/favorites`.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-Decisions taken at `/feature load`:
-
-- **Stretched link on the card title.** `CollectionCard` contains `CollectionCardMenu`, whose trigger is a `button` — wrapping the whole card in a `Link` would nest a button inside an anchor (invalid HTML) and make a menu click also navigate. Instead the title becomes the `a` and an `after:absolute after:inset-0` pseudo-element extends its hit area over the card, with the menu raised above it so it stays independently clickable.
-- **`/collections` stays a stub** (user's call — next phase). Only the sidebar's top 3 collections and the dashboard's recent 4 link anywhere, so the remaining collections are reachable only by typing the URL until that page lands. Accepted for this feature.
-
-Implementation notes:
-
-- `ItemTypeBrowser` is nearly the whole of both new pages already. Generalising it — most likely an optional `createLabel` prop, absent on the two new pages — beats a third near-identical client component. Confirm the shape at `/feature start`.
-- `dashboard-data.ts` needs two accessors alongside `getItemsByType`: one filtering `item.collectionIds.includes(id)` and one filtering `item.favorite`. Both must pre-sort with `DEFAULT_ITEM_SORT` for the same reason `getItemsByType` does — the server render and the client's initial state have to agree.
-- `src/app/collections/page.tsx` already exists as a stub; adding `src/app/collections/[collectionId]/page.tsx` beside it is a normal Next.js nesting and does not disturb it.
-- Both new routes should prerender: `generateStaticParams` over `collections` for the dynamic one, and `notFound()` for an unknown id, mirroring `/items/[type]`.
-- Sidebar wiring is three small edits in existing files: an `href` on the `favorites` entry in `primaryNav`, and `href`/`active`/`onNavigate` on the collection rows in `SidebarContent`. `collectionNav` entries already carry `id`, so no new data is needed.
-- Giving those rows an `href` also turns them from `div`s into `Link`s, which incidentally fixes the long-standing gap where their collapsed-rail tooltips were mouse-only because a `div` cannot take focus. The Pinned and Recent rows are **not** in scope and stay inert.
-- `Resources & Links` holds 0 items, so its page is the first place `ItemGrid`'s empty state actually renders. Worth checking directly, since it is not linked from anywhere.
-- Header text needs deciding at `/feature start`: the collection page has a name and an optional description to work with, and "items in your vault" is the wrong phrase for a subset.
-- Sidebar counts are the check: React Patterns 2, AI Prompts 2, DevOps & Commands 4, Favorites 5.
 
 
 
@@ -245,3 +220,32 @@ Known gaps and follow-ups:
 - `dashboard-data.ts` keeps its own generic `byUpdatedAtDesc` (it sorts collections too), so that comparator now exists in two files. Worth reconciling if collections gain a sort control.
 - The search bar in `MainHeader` is still `readOnly` on this page, so the only way to narrow a long type list is the sort control.
 - Carried forward untouched: sidebar collection rows are still non-interactive `div`s, `/collections` is still a stub, the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, and CLAUDE.md still documents a nonexistent `npm run lint`.
+
+### Collection and Favorites Pages — 2026-08-04
+
+Added `/collections/[collectionId]` and `/favorites`, both listing items the same way `/items/[type]` does, and wired every route that should reach them.
+
+`ItemTypeBrowser` became `ItemBrowser`. The rename is the point: the component was never type-specific, only its props were. `emptyMessage` is now passed in rather than derived from a type label, and `createLabel` is optional — absent on the two new pages, so the create button simply does not render. One client component serves all three list pages instead of a third near-identical copy.
+
+In `dashboard-data.ts` the three filtered accessors (`getItemsByType`, `getItemsByCollection`, `getFavoriteItems`) are one-liners over a private `getBrowserItems(matches, now)`. The invariant that matters — pre-sort with the same `DEFAULT_ITEM_SORT` the client's `useState` initialises to, so the server render and the first client render agree — is now stated once instead of copied per accessor. `getCollectionById` was added so the dynamic page does not reach into `mock-data` for a lookup.
+
+Navigation, per the decision below, is a stretched link. `CollectionCard`'s title is the only anchor; `after:absolute after:inset-0` extends its hit area over the whole card, the `Card` gained `relative` to contain it, and `CollectionCardMenu` sits in a `relative z-10` wrapper so it stays clickable above the overlay. Verified in the rendered markup that the `</a>` closes before the menu's `<button>` — no interactive element nested inside an anchor. Sidebar wiring was exactly the three edits the spec predicted: `href` on the `favorites` entry in `primaryNav`, `href` on `CollectionNavEntry`, and `href`/`active`/`onNavigate` on the collection rows in `SidebarContent`.
+
+Decisions taken at `/feature load`:
+
+- **Stretched link on the title** (user's call), rather than wrapping the card in a `Link` — which would have nested the menu's button inside an anchor and made a menu click navigate.
+- **`/collections` stays a stub** (user's call — next phase). Until it lands, the three collections outside the sidebar's top 3 are reachable only by URL.
+
+Header wording was left open at load and decided here: collection pages read `{count} items in this collection`, `/favorites` reads `{count} favorite items in your vault`. The collection's `description` was deliberately not used as the subtitle — the count is the same kind of fact on all three list pages, and swapping it out per page would have made the header mean different things in different places.
+
+Verified on the dev server: `/favorites` 5 cards, `react-patterns` 2, `devops-commands` 4, `resources-links` 0, all matching the sidebar counts; no create button on any of the four, while `/items/snippet` still renders "New Snippet". `/collections/nope` returns 404 and all six collections prerender. `aria-current="page"` lands correctly on both a collection route and `/favorites`. The stretched-link class appears exactly 4 times in markup (once per recent collection card; the other 4 hits are the RSC payload). The dashboard still emits 21 cards, so the rename changed nothing there. `npm run build` passes with 19 routes and the dev log is clean.
+
+`Resources & Links` finally paid off: its page is the first place `ItemGrid`'s empty state has actually rendered, and it reads correctly.
+
+Known gaps and follow-ups:
+
+- **Not visually verified.** Fifth feature with this caveat. The stretched link is the one most likely to disappoint by eye — the overlay stacks against the card's hover ring, and that interaction was confirmed structurally, not by clicking. Clear this before `/collections` builds on the card.
+- The sidebar's Pinned and Recent rows are still inert `div`s with mouse-only collapsed tooltips. The collection rows and Favorites lost that flaw here by gaining `href`s, so the remaining two are now the odd ones out rather than the norm.
+- `/collections` is still a stub, so three of six collections have no clickable route to them.
+- A collection's `description` renders on its card but nowhere on its own page.
+- Carried forward untouched: the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, `MainHeader`'s search is still `readOnly`, `dashboard-data.ts` still keeps its own `byUpdatedAtDesc` alongside `item-sort.ts`, and CLAUDE.md still documents a nonexistent `npm run lint`.
