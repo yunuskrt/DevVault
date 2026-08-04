@@ -143,3 +143,19 @@ Known gaps and follow-ups:
 - The `mask-image` tag fade has no `-webkit-` fallback; fine for current browsers, but Safari below 15.4 would clip hard instead of fading.
 - List view hides tags below `lg` and the whole description column is only as wide as the row allows. Narrow desktop windows show a fairly bare row.
 - Carried forward untouched: collection rows are still non-interactive `div`s, `/collections` and `/items/[type]` are still stubs, the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, and CLAUDE.md still documents a nonexistent `npm run lint`.
+
+### Items-Only Pin and Favorite — 2026-08-04
+
+Made pinning and favouriting item-only concepts. `favorite: boolean` is gone from `Collection` in `mock-data.ts` and from all six entries, with a comment on the type recording the rule so it does not get re-added. Collections keep `updatedAt`, which is what the recent-collections ordering actually needs; only the star was ever driven by `favorite`.
+
+Two readers followed. `RecentCollections` drops the amber `Star` marker and its `lucide-react` import, so a collection card is now name, dot, count and relative date. In `dashboard-data.ts` the fourth stat card changed from `favorite-collections` / `Favorite Collections` to `pinned-items` / `Pinned Items`, counting `items.filter(item => item.pinned)`. That keeps the four-card row intact and makes both of the remaining flag stats read off items, matching the sidebar's Favorites row and the main area's Pinned Items section rather than sitting alongside them counting a different kind of thing.
+
+`DashboardCollection` still spreads `Collection`, so it lost `favorite` automatically with no change at the type site. Nothing else referenced it — the remaining `favorite` hits in `src/` are all `Item.favorite` (`ItemCard`, the `favorite-items` stat, the sidebar's Favorites count).
+
+Verified: `grep -rn favorite src/` returns only item-level uses, and `npm run build` passes with all 12 routes prerendering.
+
+Known gaps and follow-ups:
+
+- The dashboard now shows the pinned count in two places — the stat card and the "Pinned Items" section heading's list. They agree today because both read `item.pinned`, but the section caps its list while the stat does not; if a limit ever bites, the numbers will diverge.
+- Not visually verified. The stat-card label change and the removed star were confirmed by build and grep, not by eye.
+- Carried forward untouched: collection rows are still non-interactive `div`s, `/collections` and `/items/[type]` are still stubs, the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, and CLAUDE.md still documents a nonexistent `npm run lint`.
