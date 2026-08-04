@@ -4,11 +4,12 @@ import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { ITEM_TYPE_META } from '@/lib/item-types'
 import type { DashboardItem } from '@/lib/dashboard-data'
+import type { ItemView } from '@/types/items'
 import CopyButton from './CopyButton'
 
 type Props = {
   item: DashboardItem
-  view: 'grid' | 'list'
+  view: ItemView
 }
 
 const ItemCard = ({ item, view }: Props) => {

@@ -1,7 +1,9 @@
 import React from 'react'
 import { notFound } from 'next/navigation'
 import MainHeader from '@/components/dashboard/MainHeader'
+import ItemTypeBrowser from '@/components/dashboard/ItemTypeBrowser'
 import { getTypeNavEntry, typeNav } from '@/lib/dashboard-nav'
+import { getItemsByType } from '@/lib/dashboard-data'
 
 type Props = {
   params: Promise<{ type: string }>
@@ -25,7 +27,10 @@ const ItemTypePage = async ({ params }: Props) => {
         subtitle={`${entry.count} ${entry.count === 1 ? 'item' : 'items'} in your vault`}
       />
       <div className="p-6">
-        <h2 className="text-lg font-semibold">Main</h2>
+        <ItemTypeBrowser
+          items={getItemsByType(entry.id)}
+          typeLabel={entry.label}
+        />
       </div>
     </>
   )

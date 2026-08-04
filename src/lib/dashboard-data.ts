@@ -7,6 +7,7 @@ import {
 } from '@/lib/mock-data'
 import { formatRelativeTime } from '@/lib/format'
 import { getDominantTypes } from '@/lib/item-types'
+import { DEFAULT_ITEM_SORT, sortItems } from '@/lib/item-sort'
 
 const RECENT_ITEM_LIMIT = 10
 const RECENT_COLLECTION_LIMIT = 4
@@ -116,3 +117,16 @@ export const getRecentItems = (now: number = Date.now()): DashboardItem[] =>
     .sort(byUpdatedAtDesc)
     .slice(0, RECENT_ITEM_LIMIT)
     .map((item) => toDashboardItem(item, now))
+
+/**
+ * Every item of one type, pre-sorted with the browser's default so the server
+ * render and the client's initial state agree.
+ */
+export const getItemsByType = (
+  type: ItemTypeId,
+  now: number = Date.now(),
+): DashboardItem[] =>
+  sortItems(
+    items.filter((item) => item.type === type),
+    DEFAULT_ITEM_SORT,
+  ).map((item) => toDashboardItem(item, now))
