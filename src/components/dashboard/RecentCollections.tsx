@@ -1,5 +1,4 @@
 import React from 'react'
-import { Star } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import type { DashboardCollection } from '@/lib/dashboard-data'
@@ -29,12 +28,6 @@ const RecentCollections = ({ collections }: Props) => {
                 }
               />
               <h3 className="truncate text-sm font-medium">{collection.name}</h3>
-              {collection.favorite && (
-                <Star
-                  className="ml-auto size-4 shrink-0 fill-amber-400 text-amber-400"
-                  aria-label="Favorite"
-                />
-              )}
             </div>
             <p className="text-xs text-muted-foreground">
               {collection.count} {collection.count === 1 ? 'item' : 'items'} ·{' '}

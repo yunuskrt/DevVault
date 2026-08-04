@@ -77,9 +77,9 @@ export const getDashboardStats = (): DashboardStat[] => [
     value: items.filter((item) => item.favorite).length,
   },
   {
-    id: 'favorite-collections',
-    label: 'Favorite Collections',
-    value: collections.filter((collection) => collection.favorite).length,
+    id: 'pinned-items',
+    label: 'Pinned Items',
+    value: items.filter((item) => item.pinned).length,
   },
 ]
 

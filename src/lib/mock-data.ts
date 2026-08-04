@@ -12,11 +12,11 @@ export type ItemType = {
   label: string
 }
 
+/** Pinning and favouriting are item-only concepts; collections carry neither. */
 export type Collection = {
   id: string
   name: string
   description?: string
-  favorite: boolean
   updatedAt: string
 }
 
@@ -53,41 +53,35 @@ export const collections: Collection[] = [
     id: 'react-patterns',
     name: 'React Patterns',
     description: 'Hooks, composition patterns and component recipes.',
-    favorite: true,
     updatedAt: '2026-08-01T16:05:00Z',
   },
   {
     id: 'python-snippets',
     name: 'Python Snippets',
     description: 'Reusable Python one-liners and cheatsheets.',
-    favorite: true,
     updatedAt: '2026-07-02T19:25:00Z',
   },
   {
     id: 'ai-prompts',
     name: 'AI Prompts',
     description: 'System prompts and workflows worth keeping.',
-    favorite: true,
     updatedAt: '2026-07-29T08:40:00Z',
   },
   {
     id: 'context-files',
     name: 'Context Files',
     description: 'Configs and diagrams to hand to an assistant.',
-    favorite: false,
     updatedAt: '2026-06-30T14:20:00Z',
   },
   {
     id: 'devops-commands',
     name: 'DevOps & Commands',
     description: 'Shell commands and operational notes.',
-    favorite: false,
     updatedAt: '2026-07-16T10:15:00Z',
   },
   {
     id: 'resources-links',
     name: 'Resources & Links',
-    favorite: false,
     updatedAt: '2026-06-11T15:40:00Z',
   },
 ]
