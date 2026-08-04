@@ -1,18 +1,44 @@
-# Current Feature
+# Current Feature: Collection Card UI Redesign
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-Not Started
+In Progress
 
 ## Goals
 
 <!-- Goals & requirements -->
 
+Redesign the collection card currently rendered by `RecentCollections` on the dashboard. The same card will later be reused on `/collections`, but that page stays a stub in this feature.
+
+Card layout, top to bottom:
+
+- **Top left** — colour dot then collection name, in their current position.
+- **Top right** — a vertical three-dot button. Clicking it opens a popup with **Edit** and **Delete** options, each a button with an icon and a text label.
+- **Below the title** — item count text: `<count> items`.
+- **Below the count** — the collection description.
+- **Bottom left** — the icon of the collection's most common item type, in that type's colour. If several types tie for most common, show all of them, ordered left to right by item-type importance.
+- **Bottom right** — the existing relative date text.
+
+Rules:
+
+- Item-type importance order: snippet → prompt → command → note → file → image → url.
+- The dot beside the title takes the colour of the most common item type; ties resolve by the same importance order (i.e. the colour of the leftmost bottom-left icon).
+- Cards must stay aligned with each other — the bottom row sits at the same place on every card regardless of description length.
+
 ## Notes
 
 <!-- Any extra notes -->
+
+- Files in scope: `src/components/dashboard/RecentCollections.tsx`, `src/lib/dashboard-data.ts` (`DashboardCollection`), `src/lib/item-types.ts`.
+- `getDominantTypeColor` in `item-types.ts` returns a single colour. The bottom-left row needs *all* tied dominant types, so this becomes a function returning an ordered `ItemTypeId[]`; the dot colour is then the first entry's colour, which preserves today's behaviour. `dashboard-nav.ts` also calls `getDominantTypeColor` for the sidebar dot and must be updated with it.
+- `TYPE_PRIORITY` in `item-types.ts` already encodes the required importance order.
+- The popup needs shadcn `dropdown-menu`, which is not installed yet.
+- The three-dot menu makes the card interactive, so `RecentCollections` (or a new `CollectionCard`) needs `'use client'`.
+- Open for `/feature start`: what Edit and Delete actually do. No collection routes, detail view or mutations exist, so the likely answer is display-only handlers this round.
+- `Resources & Links` is the one empty collection (no dominant type → muted dot, no bottom-left icons), but it sorts 6th by `updatedAt` so it does not appear in the 4 recent cards. The empty state stays unexercised on screen until `/collections` lists everything.
+- Description is optional on `Collection`; five of six carry one. Reserve its space so cards stay equal height.
 
 ## History
 
