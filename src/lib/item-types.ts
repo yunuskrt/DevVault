@@ -37,14 +37,13 @@ const TYPE_PRIORITY: ItemTypeId[] = [
 ]
 
 /**
- * The colour of a collection is the colour of its most common item type.
- * Ties fall back to TYPE_PRIORITY; an empty collection has no dominant type.
+ * Every item type a collection holds most of, ordered by TYPE_PRIORITY. A
+ * collection with a single most common type yields one entry; ties yield all
+ * of them; an empty collection yields none.
  */
-export const getDominantTypeColor = (
-  collectionItems: Item[],
-): string | undefined => {
+export const getDominantTypes = (collectionItems: Item[]): ItemTypeId[] => {
   if (collectionItems.length === 0) {
-    return undefined
+    return []
   }
 
   const counts = collectionItems.reduce<Partial<Record<ItemTypeId, number>>>(
@@ -52,9 +51,19 @@ export const getDominantTypeColor = (
     {},
   )
 
-  const dominant = TYPE_PRIORITY.reduce((best, type) =>
-    (counts[type] ?? 0) > (counts[best] ?? 0) ? type : best,
-  )
+  const highest = Math.max(...Object.values(counts))
 
-  return ITEM_TYPE_META[dominant].color
+  return TYPE_PRIORITY.filter((type) => counts[type] === highest)
+}
+
+/**
+ * The colour of a collection is the colour of its most common item type.
+ * Ties fall back to TYPE_PRIORITY; an empty collection has no dominant type.
+ */
+export const getDominantTypeColor = (
+  collectionItems: Item[],
+): string | undefined => {
+  const [dominant] = getDominantTypes(collectionItems)
+
+  return dominant ? ITEM_TYPE_META[dominant].color : undefined
 }

@@ -6,7 +6,7 @@ import {
   type ItemTypeId,
 } from '@/lib/mock-data'
 import { formatRelativeTime } from '@/lib/format'
-import { getDominantTypeColor } from '@/lib/item-types'
+import { getDominantTypes } from '@/lib/item-types'
 
 const RECENT_ITEM_LIMIT = 10
 const RECENT_COLLECTION_LIMIT = 4
@@ -30,11 +30,15 @@ export type DashboardItem = Item & {
 export type DashboardCollection = Collection & {
   count: number
   updatedLabel: string
-  /** Derived from the collection's most common item type. */
-  color?: string
+  /**
+   * The collection's most common item types, ordered by importance. Drives
+   * both the card's dot colour (the first entry) and its type icons. Empty
+   * when the collection holds no items.
+   */
+  dominantTypes: ItemTypeId[]
 }
 
-const TYPE_LABELS: Record<ItemTypeId, string> = {
+export const TYPE_LABELS: Record<ItemTypeId, string> = {
   snippet: 'Snippet',
   prompt: 'Prompt',
   note: 'Note',
@@ -97,7 +101,7 @@ export const getRecentCollections = (
         ...collection,
         count: collectionItems.length,
         updatedLabel: formatRelativeTime(collection.updatedAt, now),
-        color: getDominantTypeColor(collectionItems),
+        dominantTypes: getDominantTypes(collectionItems),
       }
     })
 
