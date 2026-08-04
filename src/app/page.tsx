@@ -17,7 +17,10 @@ const Home = ({}: Props) => {
 
   return (
     <>
-      <MainHeader title="All Items" subtitle="Everything in your vault" />
+      <MainHeader
+        title="Dashboard"
+        subtitle="Your developer knowledge, versioned"
+      />
       <div className="flex flex-col gap-8 p-6">
         <StatCards stats={getDashboardStats()} />
         <RecentCollections collections={getRecentCollections(now)} />

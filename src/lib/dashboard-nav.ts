@@ -1,4 +1,4 @@
-import { Clock, Layers, Pin, Star, type LucideIcon } from 'lucide-react'
+import { LayoutDashboard, Star, type LucideIcon } from 'lucide-react'
 import { collections, items, itemTypes, type ItemTypeId } from '@/lib/mock-data'
 import { ITEM_TYPE_META, getDominantTypeColor } from '@/lib/item-types'
 
@@ -33,20 +33,19 @@ const itemsInCollection = (collectionId: string) =>
   items.filter((item) => item.collectionIds.includes(collectionId))
 
 export const primaryNav: PrimaryNavEntry[] = [
-  { id: 'all', label: 'All Items', icon: Layers, count: items.length, href: '/' },
+  {
+    id: 'all',
+    label: 'Dashboard',
+    icon: LayoutDashboard,
+    count: items.length,
+    href: '/',
+  },
   {
     id: 'favorites',
     label: 'Favorites',
     icon: Star,
     count: items.filter((item) => item.favorite).length,
   },
-  {
-    id: 'pinned',
-    label: 'Pinned',
-    icon: Pin,
-    count: items.filter((item) => item.pinned).length,
-  },
-  { id: 'recent', label: 'Recent', icon: Clock, count: items.length },
 ]
 
 export const collectionNav: CollectionNavEntry[] = [...collections]
