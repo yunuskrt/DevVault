@@ -1,18 +1,41 @@
-# Current Feature
+# Current Feature: Item Type Page
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-Not Started
+In Progress
 
 ## Goals
 
 <!-- Goals & requirements -->
 
+- Replace the `/items/[type]` stub with a real listing page for the items of that type.
+- Keep the top section exactly as it is today: `MainHeader` with the type label, the `{count} items in your vault` subtitle, and the search bar.
+- Add a toolbar at the top of the main area holding a sort control on the left and a `New {Item Type}` button on the right.
+- Sort options (5): **Recently updated** (default), **Name A–Z**, **Name Z–A**, **Pinned first**, **Favorites first**.
+- Below the toolbar, list every item of that type using the existing `ItemCard`, styled like the dashboard's `Pinned Items` section.
+- Support both grid and list view with the same toggle pattern `ItemsBrowser` already uses.
+
 ## Notes
 
 <!-- Any extra notes -->
+
+Decisions taken at `/feature load`:
+
+- **Sort set.** The user picked the six-option bundle minus "Recently created", leaving the five above. `Item` has `createdAt`, so that option can be added later with no structural change.
+- **`New {Item Type}` is display-only.** No creation flow or mutation layer exists and mock data is static at module scope, so the button renders and is focusable but does nothing on click — same call as Edit/Delete on `CollectionCardMenu`.
+
+Implementation notes:
+
+- The page is one of seven statically prerendered routes (`generateStaticParams` over `typeNav`). Timestamps must stay server-computed and passed down as finished strings — `DashboardItem.updatedLabel` already does this, and a client-side `Date.now()` would trip a hydration mismatch.
+- Sorting and the grid/list toggle are both client state, so they belong in one client component that receives serializable `DashboardItem[]` as props. `ItemCard` stays a server-renderable presentational component.
+- `dashboard-data.ts` needs a type-filtered accessor (a `getItemsByType(type, now)` alongside the existing getters). Sort comparators live there too so the page and any future views share them.
+- The existing sort helper is `byUpdatedAtDesc`, currently private to `dashboard-data.ts`.
+- "Pinned first" / "Favorites first" are orderings, not filters — flagged items float to the top and the rest follow, tie-broken by `updatedAt` descending.
+- Mock data has at least one item for all seven types (snippet 3, command 2, note 2, prompt 2, file 1, image 1, url 1), so the empty state will not appear on any current route but should still be handled.
+- `ItemsBrowser` is dashboard-specific (it hardcodes the Pinned/Recent two-section layout). Decide at `/feature start` whether to generalise it or add a sibling component for this page.
+- `separator` is installed and still unused — the toolbar is a plausible first use.
 
 
 
