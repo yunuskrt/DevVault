@@ -145,8 +145,11 @@ const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
                     label={collection.name}
                     count={collection.count}
                     collapsed={collapsed}
+                    href={collection.href}
+                    active={pathname === collection.href}
                     dot
                     dotColor={collection.color}
+                    onNavigate={onNavigate}
                   />
                 </li>
               ))}

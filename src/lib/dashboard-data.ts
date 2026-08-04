@@ -119,14 +119,30 @@ export const getRecentItems = (now: number = Date.now()): DashboardItem[] =>
     .map((item) => toDashboardItem(item, now))
 
 /**
- * Every item of one type, pre-sorted with the browser's default so the server
- * render and the client's initial state agree.
+ * A slice of the vault for `ItemBrowser`, pre-sorted with the browser's own
+ * default so the server render and the client's initial state agree.
  */
+const getBrowserItems = (
+  matches: (item: Item) => boolean,
+  now: number,
+): DashboardItem[] =>
+  sortItems(items.filter(matches), DEFAULT_ITEM_SORT).map((item) =>
+    toDashboardItem(item, now),
+  )
+
 export const getItemsByType = (
   type: ItemTypeId,
   now: number = Date.now(),
+): DashboardItem[] => getBrowserItems((item) => item.type === type, now)
+
+export const getItemsByCollection = (
+  collectionId: string,
+  now: number = Date.now(),
 ): DashboardItem[] =>
-  sortItems(
-    items.filter((item) => item.type === type),
-    DEFAULT_ITEM_SORT,
-  ).map((item) => toDashboardItem(item, now))
+  getBrowserItems((item) => item.collectionIds.includes(collectionId), now)
+
+export const getFavoriteItems = (now: number = Date.now()): DashboardItem[] =>
+  getBrowserItems((item) => item.favorite, now)
+
+export const getCollectionById = (id: string): Collection | undefined =>
+  collections.find((collection) => collection.id === id)

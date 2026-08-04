@@ -1,18 +1,43 @@
-# Current Feature
+# Current Feature: Collection and Favorites Pages
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-Not Started
+In Progress
 
 ## Goals
 
 <!-- Goals & requirements -->
 
+- Build `/collections/[collectionId]`, listing the items that belong to that collection, built like `/items/[type]`.
+- Build `/favorites`, listing every favourited item, built like `/items/[type]`.
+- Both pages keep the `MainHeader` top section, the sort control and the grid/list toggle.
+- **Neither page gets a "New …" button** — that control is specific to `/items/[type]`.
+- Clicking a `CollectionCard` navigates to that collection's page.
+- Clicking a collection row in the sidebar navigates to that collection's page.
+- Clicking the sidebar's Favorites row navigates to `/favorites`.
+
 ## Notes
 
 <!-- Any extra notes -->
+
+Decisions taken at `/feature load`:
+
+- **Stretched link on the card title.** `CollectionCard` contains `CollectionCardMenu`, whose trigger is a `button` — wrapping the whole card in a `Link` would nest a button inside an anchor (invalid HTML) and make a menu click also navigate. Instead the title becomes the `a` and an `after:absolute after:inset-0` pseudo-element extends its hit area over the card, with the menu raised above it so it stays independently clickable.
+- **`/collections` stays a stub** (user's call — next phase). Only the sidebar's top 3 collections and the dashboard's recent 4 link anywhere, so the remaining collections are reachable only by typing the URL until that page lands. Accepted for this feature.
+
+Implementation notes:
+
+- `ItemTypeBrowser` is nearly the whole of both new pages already. Generalising it — most likely an optional `createLabel` prop, absent on the two new pages — beats a third near-identical client component. Confirm the shape at `/feature start`.
+- `dashboard-data.ts` needs two accessors alongside `getItemsByType`: one filtering `item.collectionIds.includes(id)` and one filtering `item.favorite`. Both must pre-sort with `DEFAULT_ITEM_SORT` for the same reason `getItemsByType` does — the server render and the client's initial state have to agree.
+- `src/app/collections/page.tsx` already exists as a stub; adding `src/app/collections/[collectionId]/page.tsx` beside it is a normal Next.js nesting and does not disturb it.
+- Both new routes should prerender: `generateStaticParams` over `collections` for the dynamic one, and `notFound()` for an unknown id, mirroring `/items/[type]`.
+- Sidebar wiring is three small edits in existing files: an `href` on the `favorites` entry in `primaryNav`, and `href`/`active`/`onNavigate` on the collection rows in `SidebarContent`. `collectionNav` entries already carry `id`, so no new data is needed.
+- Giving those rows an `href` also turns them from `div`s into `Link`s, which incidentally fixes the long-standing gap where their collapsed-rail tooltips were mouse-only because a `div` cannot take focus. The Pinned and Recent rows are **not** in scope and stay inert.
+- `Resources & Links` holds 0 items, so its page is the first place `ItemGrid`'s empty state actually renders. Worth checking directly, since it is not linked from anywhere.
+- Header text needs deciding at `/feature start`: the collection page has a name and an optional description to work with, and "items in your vault" is the wrong phrase for a subset.
+- Sidebar counts are the check: React Patterns 2, AI Prompts 2, DevOps & Commands 4, Favorites 5.
 
 
 

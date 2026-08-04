@@ -1,7 +1,7 @@
 import React from 'react'
 import { notFound } from 'next/navigation'
 import MainHeader from '@/components/dashboard/MainHeader'
-import ItemTypeBrowser from '@/components/dashboard/ItemTypeBrowser'
+import ItemBrowser from '@/components/dashboard/ItemBrowser'
 import { getTypeNavEntry, typeNav } from '@/lib/dashboard-nav'
 import { getItemsByType } from '@/lib/dashboard-data'
 
@@ -27,9 +27,10 @@ const ItemTypePage = async ({ params }: Props) => {
         subtitle={`${entry.count} ${entry.count === 1 ? 'item' : 'items'} in your vault`}
       />
       <div className="p-6">
-        <ItemTypeBrowser
+        <ItemBrowser
           items={getItemsByType(entry.id)}
-          typeLabel={entry.label}
+          emptyMessage={`No ${entry.label} items in your vault yet.`}
+          createLabel={`New ${entry.label}`}
         />
       </div>
     </>

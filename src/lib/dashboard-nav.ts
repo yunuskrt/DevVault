@@ -18,6 +18,7 @@ export type CollectionNavEntry = {
   name: string
   color?: string
   count: number
+  href: string
 }
 
 export type TypeNavEntry = {
@@ -45,6 +46,7 @@ export const primaryNav: PrimaryNavEntry[] = [
     label: 'Favorites',
     icon: Star,
     count: items.filter((item) => item.favorite).length,
+    href: '/favorites',
   },
 ]
 
@@ -58,6 +60,7 @@ export const collectionNav: CollectionNavEntry[] = [...collections]
       name: collection.name,
       color: getDominantTypeColor(collectionItems),
       count: collectionItems.length,
+      href: `/collections/${collection.id}`,
     }
   })
 

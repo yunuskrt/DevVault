@@ -1,4 +1,5 @@
 import React from 'react'
+import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { ITEM_TYPE_META } from '@/lib/item-types'
@@ -15,7 +16,7 @@ const CollectionCard = ({ collection }: Props) => {
   const dotColor = primaryType ? ITEM_TYPE_META[primaryType].color : undefined
 
   return (
-    <Card className="h-full gap-0 p-4 transition-shadow hover:ring-ring/40">
+    <Card className="relative h-full gap-0 p-4 transition-shadow hover:ring-ring/40">
       <div className="flex items-center gap-2">
         <span
           aria-hidden="true"
@@ -25,10 +26,22 @@ const CollectionCard = ({ collection }: Props) => {
           )}
           style={dotColor ? { backgroundColor: dotColor } : undefined}
         />
+        {/*
+         * The title is the only anchor; its ::after covers the whole card so
+         * the card is clickable without nesting the menu's button inside an
+         * <a>. The menu sits above that overlay to stay clickable itself.
+         */}
         <h3 className="min-w-0 flex-1 truncate text-sm font-medium">
-          {collection.name}
+          <Link
+            href={`/collections/${collection.id}`}
+            className="after:absolute after:inset-0 after:rounded-[inherit] hover:underline"
+          >
+            {collection.name}
+          </Link>
         </h3>
-        <CollectionCardMenu collectionName={collection.name} />
+        <div className="relative z-10">
+          <CollectionCardMenu collectionName={collection.name} />
+        </div>
       </div>
 
       <p className="mt-1.5 text-xs text-muted-foreground">
