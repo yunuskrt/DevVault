@@ -8,7 +8,7 @@ import {
   SquareTerminal,
   type LucideIcon,
 } from 'lucide-react'
-import type { Item, ItemTypeId } from '@/lib/mock-data'
+import type { Item, ItemTypeId } from '@/types/vault'
 
 export type ItemTypeMeta = {
   icon: LucideIcon
@@ -24,6 +24,15 @@ export const ITEM_TYPE_META: Record<ItemTypeId, ItemTypeMeta> = {
   image: { icon: ImageIcon, color: '#e868e8' },
   url: { icon: Link2, color: '#22c55e' },
 }
+
+/**
+ * A type's colour, or `undefined` for no type at all. The optional parameter
+ * is the point: both callers index into a possibly empty list of dominant
+ * types, and the muted dot on an empty collection depends on getting
+ * `undefined` back rather than throwing.
+ */
+export const colorForType = (type?: ItemTypeId): string | undefined =>
+  type ? ITEM_TYPE_META[type].color : undefined
 
 /** Tie-breaker when a collection has several equally common item types. */
 const TYPE_PRIORITY: ItemTypeId[] = [
@@ -64,8 +73,4 @@ export const getDominantTypes = (
  */
 export const getDominantTypeColor = (
   collectionItems: readonly Item[],
-): string | undefined => {
-  const [dominant] = getDominantTypes(collectionItems)
-
-  return dominant ? ITEM_TYPE_META[dominant].color : undefined
-}
+): string | undefined => colorForType(getDominantTypes(collectionItems)[0])

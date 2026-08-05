@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import type { DashboardItem } from '@/lib/dashboard-data'
+import type { DashboardItem } from '@/types/dashboard'
 import type { ItemView } from '@/types/items'
 import ItemGrid from './ItemGrid'
 import ViewToggle from './ViewToggle'
