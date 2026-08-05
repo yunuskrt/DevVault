@@ -4,191 +4,15 @@
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-### Component Deduplication
-
-Refactor-only. No user-facing change: every route must render the same cards,
-counts, colours and text it does today. Six findings from the refactor scan of
-`src/components/`; findings 5, 7 and 9 were reviewed and deliberately excluded.
-
-Branch: `refactor/component-dedupe`
-
----
-
-**1. `pluralize` — count strings written five times**
-
-`${n} ${n === 1 ? 'item' : 'items'}` is hand-rolled at
-`CollectionCard.tsx:48`, `app/favorites/page.tsx:15`,
-`app/collections/page.tsx:15`, `app/collections/[collectionId]/page.tsx:29`
-and `app/items/[type]/page.tsx:27` — five implementations of one rule, each
-with its own noun.
-
-Add to `src/lib/format.ts` (already the home for `formatRelativeTime`):
-
-```ts
-export const pluralize = (count: number, singular: string, plural = `${singular}s`) =>
-  `${count} ${count === 1 ? singular : plural}`
-```
-
-Call sites become `pluralize(collection.count, 'item')` and
-`` `${pluralize(n, 'item')} in your vault` `` etc. The default `plural`
-argument covers every current caller; keep the third parameter for the
-irregular noun that will eventually turn up.
-
-Subtitle wording must not change: `/favorites` keeps "N favorite items in your
-vault", so it is `` `${count} favorite ...` `` composed by hand, not
-`pluralize(count, 'favorite item')` — check the rendered strings against the
-baselines below.
-
-**2. `SortSelect` — the sort control exists twice**
-
-`ItemBrowser.tsx:45-64` and `CollectionBrowser.tsx:37-57` are the same block
-apart from the id union: same `sortLabel` lookup, same
-`<SelectValue>{label}</SelectValue>` SSR workaround (with the same comment
-copied verbatim), same `size="sm"` + `w-48` trigger, same map over an
-`{ id, label }[]`.
-
-New client component `src/components/dashboard/SortSelect.tsx`:
-
-```tsx
-type SortOption<T extends string> = { readonly id: T; readonly label: string }
-
-type Props<T extends string> = {
-  value: T
-  onChange: (value: T) => void
-  options: readonly SortOption<T>[]
-  /** aria-label for the trigger, e.g. "Sort items by". */
-  label: string
-}
-```
-
-`readonly` on both the array and the members matters — `ITEM_SORT_OPTIONS` and
-`COLLECTION_SORT_OPTIONS` are `as const`, so a mutable signature will not
-accept them. The generic parameter is what lets `onChange` hand back a narrowed
-`ItemSortId`/`CollectionSortId` instead of `string`, removing the
-`next as ItemSortId` casts at both call sites.
-
-The SSR-label comment moves into `SortSelect` and is deleted from both
-browsers — the point is that the next sortable list cannot rediscover that trap
-the hard way.
-
-**3. `EmptyState` and the shared grid classes**
-
-The dashed-border empty paragraph is byte-identical at `ItemGrid.tsx:17-19`
-and `CollectionBrowser.tsx:60-62`. Extract
-`src/components/dashboard/EmptyState.tsx` taking `{ message: string }` and use
-it in both. It stays a server component.
-
-The grid wrapper `grid gap-4 sm:grid-cols-2 xl:grid-cols-{3,4}` appears at
-`ItemGrid.tsx:27` (3), `CollectionBrowser.tsx:64` (3), `StatCards.tsx:11` (4)
-and `RecentCollections.tsx:13` (4). Export two named constants — not a
-`CardGrid` component: `StatCards` puts the grid classes on its own `<section>`,
-so a wrapper component would add a `<div>` inside the section and change the
-DOM. Two constants also read as intent rather than as a column count.
-
-Home for them: `src/lib/ui-classes.ts` (new, imports nothing). Reserve
-`src/lib/utils.ts` for the shadcn `cn` it was generated with.
-
-**4. `ColorDot` — the colour dot exists twice**
-
-`SidebarRow.tsx:46-54` (`size-2`) and `CollectionCard.tsx:21-28` (`size-2.5`)
-build the same `aria-hidden` span with the same
-`!color && 'bg-muted-foreground'` fallback and the same
-`style={color ? { backgroundColor: color } : undefined}`. The fallback is the
-part worth having in one place: it is what renders `Resources & Links`, the
-only collection with no dominant type.
-
-New `src/components/dashboard/ColorDot.tsx`, props
-`{ color?: string; size?: 'sm' | 'md' }` — `sm` = `size-2` (sidebar, default),
-`md` = `size-2.5` (card). `SidebarRow` is `'use client'` and `CollectionCard`
-is a server component, so `ColorDot` must stay free of `'use client'` to be
-usable from both.
-
-**5. `TypeIcon` — two components style `ITEM_TYPE_META` independently**
-
-`ItemCard.tsx:29-36` renders the tinted chip (`size-8` rounded square,
-`backgroundColor: ${color}1f`, icon in full colour, no accessible name);
-`CollectionCard.tsx:58-69` renders bare `size-4` icons in full colour with
-`role="img"` and `aria-label={TYPE_LABELS[type]}`. Both destructure
-`{ icon: Icon, color }` and build inline styles by hand.
-
-New `src/components/dashboard/TypeIcon.tsx` with a `variant: 'chip' | 'plain'`
-(or a `chip` boolean) covering both. **Accessibility output must not change:**
-the chip stays silent (the type is not otherwise conveyed on an item card and
-adding a label now is a behaviour change, not a refactor), and the plain
-variant keeps `role="img"` + label. Carry the existing comment explaining why
-`role="img"` is load-bearing — lucide only drops its default `aria-hidden` when
-a label is present.
-
-Leave `ItemCard`'s left accent gradient (`ItemCard.tsx:19-27`) alone; it has
-one call site.
-
-**6. Collapsed-label pattern in the sidebar buttons**
-
-`SidebarContent.tsx:71-72` and `82-83` each spell the label twice:
-
-```tsx
-{!collapsed && 'New Item'}
-{collapsed && <span className="sr-only">New Item</span>}
-```
-
-Collapse to one expression — `<span className={cn(collapsed && 'sr-only')}>` —
-either inline or as a tiny local component. In the expanded case this replaces
-a bare text node with a `<span>`; both are flex items of the same `Button`, so
-the layout should be identical, but confirm the two buttons still render
-unchanged rather than assuming it.
-
----
-
-### Excluded
-
-- **Interactive-card hover class** (`ItemCard` ×2, `CollectionCard`). Only the
-  `transition-shadow hover:ring-ring/40` fragment is genuinely shared; the rest
-  of each `className` is per-variant layout. Extracting the fragment alone
-  splits one class list across two files for little gain.
-- **Splitting `SidebarContent` (179 lines).** Readability only, no duplication,
-  and it is a single composition rendered once. Revisit if it grows.
-- **`TYPE_LABELS` vs `itemTypes[].label`.** Real duplication, but it is a data
-  question (`ITEM_TYPE_META` is the natural home for a label) and it touches
-  `mock-data.ts`, not components. Stays on the backlog.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-**Regression baselines.** These are the counts recorded by the last several
-features; every one must still hold after the refactor:
-
-- `/` 21 cards (4 stats + 4 collections + 3 pinned + 10 recent),
-  `/favorites` 5, `/collections` 6, `react-patterns` 2, `devops-commands` 4,
-  `context-files` 3, `resources-links` 0, snippet 3, command 2, url 1, image 1.
-- Collection dot colours: 3 × `#3b82f6`, 2 × `#a855f7`, 2 × `#f59553`,
-  1 × `#eab308`; `Resources & Links` muted with no footer icons.
-- `Context Files` shows its three-way dominant-type tie (Note → File → Image).
-- `/collections/nope` 404s; `aria-current="page"` still lands on collection
-  routes and `/favorites`; every `aria-label="Pinned"` / `"Favorite"` still
-  carries `role="img"`.
-- `New Snippet` renders on `/items/snippet` and on no other list page.
-- `npm run build` passes with 19 routes prerendering, `tsc --noEmit` clean,
-  dev log free of errors and hydration warnings.
-
-**Ordering.** 1, 3, 4 and 6 are independent. 2 touches both browsers and 5
-touches both cards, so do those last to keep diffs readable.
-
-**Watch for.** `w-48` on the sort trigger has to beat the component's base
-`w-fit` — a silent `tailwind-merge` failure if the class order changes when the
-JSX moves into `SortSelect`. Verify it in the rendered class list, the way the
-`w-36`/`p-4` overrides were verified previously.
-
-**Still open going in:** none of the card or layout rendering has been visually
-verified across the last seven features. This refactor asserts "nothing
-changed" against structural checks only, which is exactly the weakness that
-backlog represents. If Playwright is available this session, use it here.
 
 ## History
 
@@ -562,3 +386,111 @@ Known gaps and follow-ups:
   `MainHeader`'s search is still `readOnly`, a collection's `description` still
   renders nowhere on its own page, and the display-only controls still give no
   feedback on click.
+
+### Component Deduplication — 2026-08-05
+
+Closed out the refactor-scanner audit of `src/components/`. No user-facing
+change: every route renders the same cards, counts, colours and text as before,
+verified against the baselines the previous entries recorded. Five new files,
+fourteen edited, and the component layer net −40 lines.
+
+Six of the scan's nine findings were taken. Three were declined at spec time:
+the interactive-card hover fragment (only `transition-shadow
+hover:ring-ring/40` is genuinely shared; the rest of each class list is
+per-variant layout, so extracting it would split one class list across two
+files), splitting `SidebarContent` (readability only, no duplication, a single
+composition rendered once), and `TYPE_LABELS` vs `itemTypes[].label` (real, but
+a data question touching `mock-data.ts` rather than components).
+
+**`pluralize` in `format.ts`** replaces five hand-rolled `count === 1 ? … : …`
+ternaries — `CollectionCard` and the four list pages, each with its own noun
+and one already inconsistent in wording. The third parameter takes an irregular
+plural; every current caller uses the `${singular}s` default.
+
+**`SortSelect`** is generic over the sort id union
+(`<T extends string>`), which is what lets `onChange` hand back a narrowed
+`ItemSortId`/`CollectionSortId` and removes the `next as ItemSortId` casts at
+both call sites. `readonly` on both the array and its members is load-bearing:
+`ITEM_SORT_OPTIONS` and `COLLECTION_SORT_OPTIONS` are `as const`, and a mutable
+signature would not accept them. The `<SelectValue>{label}</SelectValue>` SSR
+workaround — discovered on the item page, then copied verbatim into the
+collections page — now lives in one place with its comment, so a third sortable
+list cannot rediscover it the hard way.
+
+**`EmptyState`** replaces the byte-identical dashed-border paragraph in
+`ItemGrid` and `CollectionBrowser`. The grid wrapper became two named constants
+in the new `src/lib/ui-classes.ts` rather than a `CardGrid` component,
+because `StatCards` puts those classes on its own `<section>` — a wrapper would
+have added a `<div>` inside it and changed the DOM. `ItemGrid` also lost a
+`cn()` that wrapped a single ternary and did nothing.
+
+**`ColorDot`** replaces the dot span in `SidebarRow` (`size-2`) and
+`CollectionCard` (`size-2.5`), including the `!color && 'bg-muted-foreground'`
+fallback that renders `Resources & Links`. It deliberately carries no
+`'use client'`: `SidebarRow` is a client component and `CollectionCard` is a
+server one, and both use it.
+
+**`TypeIcon`** covers the tinted chip and the labelled bare icon behind a `chip`
+flag. Its accessibility output is unchanged by design — the chip stays silent
+(the card already names the item; labelling it now would be a behaviour change,
+not a refactor) and the bare variant keeps `role="img"` with the comment
+explaining why lucide needs it.
+
+The one deviation from the spec here: `TypeIcon` takes its `label` as a prop
+instead of importing `TYPE_LABELS`. Importing it would pull `dashboard-data` →
+`mock-data` into `ItemCard`, which is client-bundled by way of `ItemBrowser`.
+`CollectionCard` already imports `TYPE_LABELS` and passes the label down, so no
+new client-bundle dependency was introduced.
+
+The other deviation: `/favorites` uses `pluralize(n, 'favorite item')`. The spec
+said to compose that subtitle by hand to protect its wording, but hand-composing
+means writing the exact ternary being removed. The rendered string is identical.
+
+**The sidebar buttons** now spell their label once. `{!collapsed && 'New Item'}`
+plus `{collapsed && <span className="sr-only">New Item</span>}` became a single
+`<span className={collapsed ? 'sr-only' : undefined}>`; `cn()` was tried first
+but rendered a stray `class=""` when expanded.
+
+Verified on the dev server after the change: card counts 21 / 5 / 6 /
+`react-patterns` 2 / `devops-commands` 4 / `context-files` 3 /
+`resources-links` 0 / snippet 3 / command 2 / url 1 / image 1, all matching the
+recorded baselines. Dot colours unchanged at 3 × `#3b82f6`, 2 × `#a855f7`,
+2 × `#f59553`, 1 × `#eab308`, plus the single muted `size-2.5` dot. Thirteen
+accent gradients in the same per-type distribution as the card redesign
+recorded (4 blue, 3 purple, 2 pink, 1 each green/grey/yellow/orange). Every
+`Pinned` / `Favorite` / type-icon label carries `role="img"` with none bare
+(17 / 7 / 7 / 4 across four routes) and the item chip is still unlabelled.
+`w-48` still beats the trigger's base `w-fit` after the JSX moved into
+`SortSelect`, and the sort label is still in the prerendered HTML rather than
+appearing at hydration. `/collections/nope` still 404s, "New Snippet" still
+renders on exactly one route, and the grid wrappers resolve to 2 × 3-col and
+2 × 4-col on `/`. `npm run build` passes with 19 routes prerendering,
+`tsc --noEmit` is clean, and the dev log is free of errors and hydration
+warnings.
+
+Known gaps and follow-ups:
+
+- **Still not visually verified.** Eighth feature with this caveat. Playwright
+  was not in the session's toolset again, so every check above is structural.
+  The `ui-reviewer` agent does have it, which is the cheapest way to finally
+  clear this backlog — worth doing before more card or layout work lands.
+- `ColorDot` emits its classes in a different order than the two sites it
+  replaced (`shrink-0 rounded-full size-2` rather than `size-2 shrink-0
+  rounded-full`). The utilities do not conflict so the computed CSS is
+  identical, but a `tailwind-merge` conflict introduced later would resolve
+  differently than it used to.
+- `TypeIcon`'s `label` is optional on the type, so the bare variant can be
+  rendered without an accessible name and nothing catches it. A props union
+  (`chip: true` | `label: string`) would make that unrepresentable; it was
+  judged over-built for two call sites.
+- `ui-classes.ts` has exactly two constants and no obvious third. If it does not
+  grow, folding it back into whichever module ends up owning presentation
+  concerns is reasonable.
+- `TYPE_LABELS` duplicating `itemTypes[].label` is now flagged for the third
+  feature running. `TypeIcon` made it slightly more visible — the label is now
+  passed as a prop across a component boundary — without moving it.
+- Carried forward untouched: the sidebar's Pinned and Recent rows are still
+  inert `div`s, the sidebar's "Recent" count still means `items.length`,
+  `MainHeader`'s search is still `readOnly`, a collection's `description` still
+  renders nowhere on its own page, the display-only controls still give no
+  feedback on click, and there is still no lint script or ESLint config.
