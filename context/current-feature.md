@@ -1,41 +1,18 @@
-# Current Feature: All Collections Page
+# Current Feature
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-- Replace the `/collections` stub with a grid of **every** collection, rendered with the existing `CollectionCard`.
-- Keep the `MainHeader` top section it already has (title, `{count} collections in your vault`, search bar).
-- Add a sort control matching the one on `/items/[type]` and the other list pages.
-- Sort options (5): **Recently updated** (default), **Name A–Z**, **Name Z–A**, **Most items**, **Fewest items**.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-Decisions taken at `/feature load`:
-
-- **Five sort options** (user's call). Collections have no `createdAt`, and pin/favorite are deliberately item-only, so the item pages' two flag orderings are replaced by the only other fact a collection carries — its derived item count.
-- **Grid only, no view toggle** (user's call). `ItemCard` has a separate fixed-column list branch; `CollectionCard` has none, and adding one would change a component that three other places already render. The toolbar therefore holds the sort control alone.
-
-Implementation notes:
-
-- This finally closes the navigation dead end: three of six collections currently have no clickable route to them, since the sidebar caps at `SIDEBAR_COLLECTION_LIMIT = 3` and the dashboard's recent list caps at 4.
-- `CollectionCard` already links to `/collections/[collectionId]` via the stretched link added last feature, so cards on this page navigate with no extra work.
-- Sorting collections needs its own module — `item-sort.ts` is typed to `title`/`pinned`/`favorite`, which a collection does not have. A sibling `collection-sort.ts` following the same rules (no imports, options `as const`, id union derived from the array, copy-before-sort) keeps it out of the client bundle the same way.
-- Two of the five orderings sort on `count`, which is **not** on `Collection` — it is derived per collection by filtering `items`. So the sort input must be `DashboardCollection` (which carries `count`), not `Collection`.
-- `getRecentCollections` in `dashboard-data.ts` already builds `DashboardCollection` but slices to `RECENT_COLLECTION_LIMIT = 4`. An unsliced accessor is needed; factoring the shared mapping out of it, the way `getBrowserItems` was factored out last feature, avoids a second copy of the count/`dominantTypes`/`updatedLabel` logic.
-- Sort and its state are client-side, so a small client component owns the toolbar and grid, receiving serializable `DashboardCollection[]` — the `ItemBrowser` pattern. Server-computed `updatedLabel` must stay as-is; `/collections` prerenders statically.
-- Both edge cases finally become visible here, having rendered nowhere so far: `Context Files` has a three-way dominant-type tie (Note → File → Image), and `Resources & Links` has 0 items, a muted dot and no footer icons.
-- Expected order under the default: React Patterns 2, AI Prompts 2, DevOps & Commands 4, Python Snippets 1, Context Files 3, Resources & Links 0 — 6 cards, 12 memberships across them (two items belong to two collections each, two belong to none).
-
-
 
 ## History
 
@@ -270,3 +247,34 @@ Known gaps and follow-ups:
 - `/collections` is still a stub, so three of six collections have no clickable route to them.
 - A collection's `description` renders on its card but nowhere on its own page.
 - Carried forward untouched: the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, `MainHeader`'s search is still `readOnly`, `dashboard-data.ts` still keeps its own `byUpdatedAtDesc` alongside `item-sort.ts`, and CLAUDE.md still documents a nonexistent `npm run lint`.
+
+### All Collections Page — 2026-08-05
+
+Replaced the `/collections` stub with a grid of every collection and a sort control. `MainHeader` is untouched — same title, same `{count} collections in your vault`, same search bar. No new shadcn components; the page is assembled entirely from parts the previous three features built.
+
+`src/lib/collection-sort.ts` is the sibling of `item-sort.ts` and follows it exactly: imports nothing at all (so the client component that pulls it in does not drag `mock-data.ts` into the browser bundle), options `as const` with `CollectionSortId` derived by indexed access, comparators keyed by id in a `Record`, and `sortCollections` copying before it sorts. Name sorting pins the locale to `'en'` with `sensitivity: 'base'` for the same reason it does there.
+
+The interesting difference is what it sorts *on*. `item-sort.ts` is typed to `title`/`pinned`/`favorite`; a collection has none of those. Two of the five orderings sort on `count`, which is not a field on `Collection` — it is derived by filtering `items` — so `SortableCollection` is `name`/`updatedAt`/`count` and the sortable shape is `DashboardCollection`, not `Collection`. Both count orderings tie-break on `byUpdatedAtDesc` rather than leaving equal counts in arbitrary order; React Patterns and AI Prompts both hold 2, so the tie is live in current data, not hypothetical.
+
+In `dashboard-data.ts` the `DashboardCollection` mapping was factored out of `getRecentCollections` into `toDashboardCollection`, the way `getBrowserItems` was factored out last feature, and `getAllCollections` is the unsliced accessor over it. `getRecentCollections` keeps its `RECENT_COLLECTION_LIMIT = 4` slice and renders identically. `getAllCollections` pre-sorts with the same `DEFAULT_COLLECTION_SORT` the client's `useState` initialises to, so the server render and the first client render agree by construction — the invariant the three item accessors already hold.
+
+`CollectionBrowser` is the only new client component, owning sort state and nothing else. Both traps from the item page were carried over deliberately rather than rediscovered: `<SelectValue>{sortLabel}</SelectValue>` puts the trigger's text in the prerendered HTML (a bare `SelectValue` renders blank on a static page and fills in at hydration), and `w-48` on the trigger has to beat the component's base `w-fit`.
+
+Decisions taken at `/feature load`:
+
+- **Five sort options** (user's call): Recently updated (default), Name A–Z, Name Z–A, Most items, Fewest items. Collections have no `createdAt`, and pin/favorite are deliberately item-only, so the item pages' two flag orderings are replaced by the only other fact a collection carries.
+- **Grid only, no view toggle** (user's call). `CollectionCard` has no fixed-column list branch the way `ItemCard` does, and adding one would change a component three other places already render. The toolbar holds the sort control alone.
+
+Verified: `npm run build` passes with all 19 routes prerendering and TypeScript clean. The page renders 6 cards in the expected default order — React Patterns 2, AI Prompts 2, DevOps & Commands 4, Python Snippets 1, Context Files 3, Resources & Links 0 — accounting for 12 memberships across 12 items, two of which belong to two collections and two to none.
+
+Two edge cases that had rendered nowhere until now are finally visible on this page: `Context Files` shows its three-way dominant-type tie (Note → File → Image) and `Resources & Links` shows the muted dot with no footer icons at 0 items. Both were previously confirmed only by temporarily raising `RECENT_COLLECTION_LIMIT`.
+
+This closes the navigation dead end that has been carried forward since the sidebar was capped: every collection now has a clickable route, since `CollectionCard`'s stretched link already points at `/collections/[collectionId]`.
+
+Known gaps and follow-ups:
+
+- **Not visually verified.** Sixth feature with this caveat, and it now spans the whole card layer — the stretched link, the accent gradients, the tag fade and this grid have all been confirmed structurally. It is the single largest outstanding risk in the UI work and should be cleared before more card or layout work lands.
+- The empty state in `CollectionBrowser` (`No collections in your vault yet.`) cannot be reached — `collections` is static and non-empty. It exists for when storage becomes real.
+- `byUpdatedAtDesc` now exists in three files: `dashboard-data.ts`, `item-sort.ts` and `collection-sort.ts`. The last feature flagged this as worth reconciling "if collections gain a sort control" — they now have.
+- `CollectionCardMenu`'s Edit and Delete are display-only, and this page multiplies them from 4 cards to 6. Clicking either still closes the menu with no feedback.
+- Carried forward untouched: the sidebar's Pinned and Recent rows are still inert `div`s, the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, `MainHeader`'s search is still `readOnly`, a collection's `description` still renders nowhere on its own page, and CLAUDE.md still documents a nonexistent `npm run lint`.
