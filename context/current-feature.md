@@ -4,52 +4,15 @@
 
 <!-- Not Started|In Progress|Completed -->
 
-Completed
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-Close out the findings from the code-scanner audit (2026-08-05). No new
-user-facing features; this is a correctness, type-safety and consistency pass.
-
-1. **`ItemCard` accessibility.** The `Pin` and `Star` markers carry `aria-label`
-   but no `role="img"`, so screen readers may drop pinned/favorite status.
-   `CollectionCard` already applies this fix; `ItemCard` never got it.
-2. **Discriminated `Item` union.** `Item` is a flat type with `content`,
-   `language`, `url` and `fileName` all optional regardless of `type`, so a
-   `url` item with no `url` compiles. Model it as a union keyed on `type`, with
-   strict per-type fields, and resolve `copyText` exhaustively instead of
-   probing a four-way fallback chain.
-3. **Single items↔collections index.** The membership lookup is re-derived by
-   linear scan in three places (`collectionNames`, `toDashboardCollection`,
-   `itemsInCollection`). Build the reverse index once and have every call site
-   read from it.
-4. **`npm run lint`.** Remove the documentation of the nonexistent script.
-5. **Shared comparators.** `byUpdatedAtDesc` is implemented three times and the
-   locale-aware name comparator twice. Extract into a zero-dependency module so
-   `item-sort.ts` and `collection-sort.ts` keep their no-`mock-data` guarantee.
-6. **`ItemsBrowser` vs `ItemBrowser`.** Two differently-scoped components one
-   letter apart. Rename the dashboard one.
-7. **Unused `separator`.** Installed since dashboard phase 1, never imported.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-Decisions taken at feature start:
-
-- **`Item` union is strict per type** (user's call), not payload-only: snippet
-  and command require `content` + `language`, prompt and note require
-  `content`, url requires `url`, image requires `fileName`, and file requires
-  `fileName` with `content`/`language` optional.
-- **`MainHeader`'s `readOnly` search is left as-is** (user's call). Wiring
-  client-side filtering is a spec'd core feature deserving its own branch, and
-  disabling the input was judged worse than leaving it.
-
-Explicitly out of scope: the display-only controls (`CollectionCardMenu`'s Edit
-and Delete, New Item, New Collection, `New {Type}`). Their handlers land with
-the CRUD work.
 
 ## History
 

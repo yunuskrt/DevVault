@@ -32,6 +32,7 @@ Scan the codebase and report any issues you find. If no folder is specified, sca
 
 - Unused variables or imports
 - Console.log statements left in code
+- Large amount of reduceable comment code
 - Missing error handling
 - Inconsistent naming conventions
 - TypeScript `any` types
