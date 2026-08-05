@@ -4,15 +4,52 @@
 
 <!-- Not Started|In Progress|Completed -->
 
-Not Started
+Completed
 
 ## Goals
 
 <!-- Goals & requirements -->
 
+Close out the findings from the code-scanner audit (2026-08-05). No new
+user-facing features; this is a correctness, type-safety and consistency pass.
+
+1. **`ItemCard` accessibility.** The `Pin` and `Star` markers carry `aria-label`
+   but no `role="img"`, so screen readers may drop pinned/favorite status.
+   `CollectionCard` already applies this fix; `ItemCard` never got it.
+2. **Discriminated `Item` union.** `Item` is a flat type with `content`,
+   `language`, `url` and `fileName` all optional regardless of `type`, so a
+   `url` item with no `url` compiles. Model it as a union keyed on `type`, with
+   strict per-type fields, and resolve `copyText` exhaustively instead of
+   probing a four-way fallback chain.
+3. **Single items↔collections index.** The membership lookup is re-derived by
+   linear scan in three places (`collectionNames`, `toDashboardCollection`,
+   `itemsInCollection`). Build the reverse index once and have every call site
+   read from it.
+4. **`npm run lint`.** Remove the documentation of the nonexistent script.
+5. **Shared comparators.** `byUpdatedAtDesc` is implemented three times and the
+   locale-aware name comparator twice. Extract into a zero-dependency module so
+   `item-sort.ts` and `collection-sort.ts` keep their no-`mock-data` guarantee.
+6. **`ItemsBrowser` vs `ItemBrowser`.** Two differently-scoped components one
+   letter apart. Rename the dashboard one.
+7. **Unused `separator`.** Installed since dashboard phase 1, never imported.
+
 ## Notes
 
 <!-- Any extra notes -->
+
+Decisions taken at feature start:
+
+- **`Item` union is strict per type** (user's call), not payload-only: snippet
+  and command require `content` + `language`, prompt and note require
+  `content`, url requires `url`, image requires `fileName`, and file requires
+  `fileName` with `content`/`language` optional.
+- **`MainHeader`'s `readOnly` search is left as-is** (user's call). Wiring
+  client-side filtering is a spec'd core feature deserving its own branch, and
+  disabling the input was judged worse than leaving it.
+
+Explicitly out of scope: the display-only controls (`CollectionCardMenu`'s Edit
+and Delete, New Item, New Collection, `New {Type}`). Their handlers land with
+the CRUD work.
 
 ## History
 
@@ -278,3 +315,111 @@ Known gaps and follow-ups:
 - `byUpdatedAtDesc` now exists in three files: `dashboard-data.ts`, `item-sort.ts` and `collection-sort.ts`. The last feature flagged this as worth reconciling "if collections gain a sort control" — they now have.
 - `CollectionCardMenu`'s Edit and Delete are display-only, and this page multiplies them from 4 cards to 6. Clicking either still closes the menu with no feedback.
 - Carried forward untouched: the sidebar's Pinned and Recent rows are still inert `div`s, the sidebar's "Recent" count still means `items.length`, `separator` is still installed and unused, `MainHeader`'s search is still `readOnly`, a collection's `description` still renders nowhere on its own page, and CLAUDE.md still documents a nonexistent `npm run lint`.
+
+### Code Scan Follow-Ups — 2026-08-05
+
+Closed out the code-scanner audit. No user-facing change: every route renders
+exactly what it did before, verified card-for-card. Two new lib modules, one
+component renamed, one unused shadcn component removed.
+
+**`Item` is now a discriminated union.** `ItemBase` holds the fields every item
+carries; `CodeItem` (`snippet` | `command`) requires `content` + `language`,
+`TextItem` (`prompt` | `note`) requires `content`, `UrlItem` requires `url`,
+`ImageItem` requires `fileName`, and `FileItem` requires `fileName` with
+`content`/`language` optional. All twelve mock items already satisfied the
+strict shape, so no data changed — the union only made the existing invariant
+enforceable.
+
+The payoff landed immediately and unprompted: `copyTextFor`'s old
+`item.content ?? item.url ?? item.fileName ?? item.title` stopped compiling the
+moment the union went in, because no single member has all four fields. It is
+now an exhaustive `switch` returning `string` with no fallback, and a new item
+type will fail to compile there until it declares what its copy button writes.
+The title fallback is gone: it was unreachable for six of seven types and only
+ever masked a missing payload.
+
+**`vault-index.ts` holds the reverse indexes.** Membership is stored on the
+item, which is right for Git-backed storage but made "the items in this
+collection" an O(items) scan repeated per collection in three readers. A
+`Map<collectionId, Item[]>` and a `Map<id, Collection>` are built once, and
+`collectionNames`, `toDashboardCollection`, `getItemsByCollection`,
+`getCollectionById` and the sidebar's `collectionNav` all read from them.
+`getItemsInCollection` returns `readonly Item[]` because the array is the
+index's own — that propagated to `getDominantTypes`, `getDominantTypeColor`,
+`sortItems` and `sortCollections`, all of which already copied before sorting,
+so the annotation documents an invariant that already held rather than
+introducing one. `getBrowserItems` now takes the item array instead of a
+predicate, which is what let the collection accessor use the index at all.
+
+**`sort-utils.ts` holds `byUpdatedAtDesc` and `byTextAsc`.** It imports nothing,
+so `item-sort.ts` and `collection-sort.ts` keep their no-`mock-data` guarantee
+while depending on it. `byUpdatedAtDesc` was implemented three times and the
+locale-pinned name comparator twice; both are now single definitions.
+`dashboard-nav.ts` had a fourth inline copy in `collectionNav`'s `.sort()` that
+the scan did not flag — it now uses the shared one too.
+
+**`ItemCard`'s pin and star markers gained `role="img"`.** `CollectionCard`
+already carried this fix with a comment explaining why; `ItemCard` never got
+it, so pinned and favorite status was plausibly silent to screen readers on
+every item card in the app. The comment is now duplicated at the second site
+rather than referenced, since that is where someone would delete the attribute.
+
+**`ItemsBrowser` is now `DashboardItemSections`**, renamed via `git mv` so the
+history follows. It was one letter from `ItemBrowser` while doing something
+entirely different — the dashboard's fixed Pinned/Recent pair rather than the
+sortable single list. **`src/components/ui/separator.tsx`** was deleted; it had
+been installed since dashboard phase 1 and never imported.
+
+Decisions taken at feature start:
+
+- **Strict per-type union** (user's call) over payload-only. This is what made
+  `copyTextFor` exhaustive; the looser variant would have kept a fallback.
+- **`MainHeader`'s `readOnly` search left as-is** (user's call). Real search is
+  a spec'd core feature and belongs on its own branch; disabling the input in
+  the meantime was judged worse than leaving it.
+- The display-only controls (`CollectionCardMenu` Edit/Delete, New Item, New
+  Collection, `New {Type}`) were explicitly excluded — their handlers land with
+  the CRUD work.
+
+The scan's fourth finding, CLAUDE.md documenting a nonexistent `npm run lint`,
+**needed no change**: CLAUDE.md's Commands section already lists only `dev`,
+`build` and `start`. The stale references live in this file's own history
+entries, which were left alone rather than rewritten. There is still no lint
+script, so the underlying gap stands — nothing documents it now.
+
+Verified against the dev server after the change: `/` 21 cards, `/favorites` 5,
+`/collections` 6, `react-patterns` 2, `devops-commands` 4, `context-files` 3,
+`resources-links` 0, snippet 3, command 2, url 1, image 1 — every count
+matching the baselines recorded in the previous entries. Collection dot colours
+are unchanged (3 × `#3b82f6`, 2 × `#a855f7`, 2 × `#f59553`, 1 × `#eab308`),
+`/collections/nope` still 404s, and every `aria-label="Pinned"` /
+`"Favorite"` in the markup now carries `role="img"` with none bare. Each type's
+`copyText` was read out of the RSC payload and confirmed to resolve to the same
+value the old chain produced: content for snippet/command/prompt/note/file,
+the URL for url, the filename for image. `npm run build` passes with all 19
+routes prerendering, `tsc --noEmit` is clean, and the dev log has no errors or
+warnings after the change.
+
+Known gaps and follow-ups:
+
+- **Still not visually verified.** Seventh feature with this caveat. This one is
+  lower risk than the card work — the only visual-layer change is an ARIA
+  attribute — but the backlog of unverified card and layout rendering is
+  unchanged and still the largest outstanding risk in the UI.
+- `vault-index.ts` builds both maps at module scope, which is correct only
+  because the vault is static. Reading items from the filesystem means moving
+  index construction into the request path and invalidating it when the vault
+  changes on disk. The module comment says so.
+- `TYPE_LABELS` in `dashboard-data.ts` still duplicates `itemTypes[].label` in
+  `mock-data.ts`. Flagged two features ago, still open; `ITEM_TYPE_META` is the
+  natural home.
+- The `Item` union is compiler-enforced but not runtime-validated. The coding
+  standards call for Zod at boundaries, and frontmatter parsing will be one —
+  the union is the schema that validator has to match.
+- There is no lint script and no ESLint config, so nothing mechanically catches
+  the unused imports and dead exports these scans keep finding by hand.
+- Carried forward untouched: the sidebar's Pinned and Recent rows are still
+  inert `div`s, the sidebar's "Recent" count still means `items.length`,
+  `MainHeader`'s search is still `readOnly`, a collection's `description` still
+  renders nowhere on its own page, and the display-only controls still give no
+  feedback on click.

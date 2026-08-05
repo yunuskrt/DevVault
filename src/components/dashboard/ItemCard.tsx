@@ -37,11 +37,21 @@ const ItemCard = ({ item, view }: Props) => {
 
   const markers = (
     <>
+      {/*
+       * role="img" is load-bearing: lucide only drops its default aria-hidden
+       * when a label is present, and a bare aria-label on an svg is not
+       * reliably exposed. Without it the marker is silent. Matches CollectionCard.
+       */}
       {item.pinned && (
-        <Pin className="size-3.5 shrink-0 text-muted-foreground" aria-label="Pinned" />
+        <Pin
+          role="img"
+          className="size-3.5 shrink-0 text-muted-foreground"
+          aria-label="Pinned"
+        />
       )}
       {item.favorite && (
         <Star
+          role="img"
           className="size-3.5 shrink-0 fill-amber-400 text-amber-400"
           aria-label="Favorite"
         />

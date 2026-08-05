@@ -6,6 +6,8 @@
  * not stored on `Collection`, so the sortable shape is `DashboardCollection`.
  */
 
+import { byTextAsc, byUpdatedAtDesc } from '@/lib/sort-utils'
+
 type SortableCollection = {
   name: string
   updatedAt: string
@@ -24,12 +26,8 @@ export type CollectionSortId = (typeof COLLECTION_SORT_OPTIONS)[number]['id']
 
 export const DEFAULT_COLLECTION_SORT: CollectionSortId = 'recent'
 
-const byUpdatedAtDesc = (a: SortableCollection, b: SortableCollection) =>
-  new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-
-/** Fixed locale so the ordering does not shift with the runtime's default. */
 const byNameAsc = (a: SortableCollection, b: SortableCollection) =>
-  a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })
+  byTextAsc(a.name, b.name)
 
 /** Equal counts fall back to recency, so the order stays meaningful. */
 const byCountDesc = (a: SortableCollection, b: SortableCollection) =>
@@ -47,6 +45,6 @@ const COMPARATORS: Record<
 }
 
 export const sortCollections = <T extends SortableCollection>(
-  collections: T[],
+  collections: readonly T[],
   sort: CollectionSortId,
 ): T[] => [...collections].sort(COMPARATORS[sort])

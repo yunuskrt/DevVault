@@ -2,7 +2,7 @@ import React from 'react'
 import MainHeader from '@/components/dashboard/MainHeader'
 import StatCards from '@/components/dashboard/StatCards'
 import RecentCollections from '@/components/dashboard/RecentCollections'
-import ItemsBrowser from '@/components/dashboard/ItemsBrowser'
+import DashboardItemSections from '@/components/dashboard/DashboardItemSections'
 import {
   getDashboardStats,
   getPinnedItems,
@@ -24,7 +24,7 @@ const Home = ({}: Props) => {
       <div className="flex flex-col gap-8 p-6">
         <StatCards stats={getDashboardStats()} />
         <RecentCollections collections={getRecentCollections(now)} />
-        <ItemsBrowser
+        <DashboardItemSections
           pinnedItems={getPinnedItems(now)}
           recentItems={getRecentItems(now)}
         />
