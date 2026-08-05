@@ -11,7 +11,7 @@ type Props = {
   recentItems: DashboardItem[]
 }
 
-const ItemsBrowser = ({ pinnedItems, recentItems }: Props) => {
+const DashboardItemSections = ({ pinnedItems, recentItems }: Props) => {
   const [view, setView] = useState<ItemView>('grid')
 
   return (
@@ -32,4 +32,4 @@ const ItemsBrowser = ({ pinnedItems, recentItems }: Props) => {
   )
 }
 
-export default ItemsBrowser
+export default DashboardItemSections

@@ -41,7 +41,9 @@ const TYPE_PRIORITY: ItemTypeId[] = [
  * collection with a single most common type yields one entry; ties yield all
  * of them; an empty collection yields none.
  */
-export const getDominantTypes = (collectionItems: Item[]): ItemTypeId[] => {
+export const getDominantTypes = (
+  collectionItems: readonly Item[],
+): ItemTypeId[] => {
   if (collectionItems.length === 0) {
     return []
   }
@@ -61,7 +63,7 @@ export const getDominantTypes = (collectionItems: Item[]): ItemTypeId[] => {
  * Ties fall back to TYPE_PRIORITY; an empty collection has no dominant type.
  */
 export const getDominantTypeColor = (
-  collectionItems: Item[],
+  collectionItems: readonly Item[],
 ): string | undefined => {
   const [dominant] = getDominantTypes(collectionItems)
 

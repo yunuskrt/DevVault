@@ -12,6 +12,8 @@ import {
   DEFAULT_COLLECTION_SORT,
   sortCollections,
 } from '@/lib/collection-sort'
+import { byUpdatedAtDesc } from '@/lib/sort-utils'
+import { findCollection, getItemsInCollection } from '@/lib/vault-index'
 
 const RECENT_ITEM_LIMIT = 10
 const RECENT_COLLECTION_LIMIT = 4
@@ -53,21 +55,29 @@ export const TYPE_LABELS: Record<ItemTypeId, string> = {
   url: 'URL',
 }
 
-const byUpdatedAtDesc = <T extends { updatedAt: string }>(a: T, b: T) =>
-  new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-
 const collectionNames = (ids: string[]) =>
-  ids
-    .map((id) => collections.find((collection) => collection.id === id)?.name)
-    .filter((name): name is string => Boolean(name))
+  ids.map((id) => findCollection(id)?.name).filter((name) => name !== undefined)
 
 /**
- * Not every type stores its payload in `content`: url items carry `url` and
- * file/image items carry `fileName`. Falling back to the title keeps the copy
- * button from silently doing nothing.
+ * Each type stores its payload in a different field, so the union is matched
+ * exhaustively rather than probed with a fallback chain. A new item type will
+ * fail to compile here until it says what its copy button writes.
  */
-const copyTextFor = (item: Item) =>
-  item.content ?? item.url ?? item.fileName ?? item.title
+const copyTextFor = (item: Item): string => {
+  switch (item.type) {
+    case 'snippet':
+    case 'command':
+    case 'prompt':
+    case 'note':
+      return item.content
+    case 'url':
+      return item.url
+    case 'image':
+      return item.fileName
+    case 'file':
+      return item.content ?? item.fileName
+  }
+}
 
 const toDashboardItem = (item: Item, now: number): DashboardItem => ({
   ...item,
@@ -96,9 +106,7 @@ const toDashboardCollection = (
   collection: Collection,
   now: number,
 ): DashboardCollection => {
-  const collectionItems = items.filter((item) =>
-    item.collectionIds.includes(collection.id),
-  )
+  const collectionItems = getItemsInCollection(collection.id)
 
   return {
     ...collection,
@@ -145,26 +153,30 @@ export const getRecentItems = (now: number = Date.now()): DashboardItem[] =>
  * default so the server render and the client's initial state agree.
  */
 const getBrowserItems = (
-  matches: (item: Item) => boolean,
+  source: readonly Item[],
   now: number,
 ): DashboardItem[] =>
-  sortItems(items.filter(matches), DEFAULT_ITEM_SORT).map((item) =>
-    toDashboardItem(item, now),
-  )
+  sortItems(source, DEFAULT_ITEM_SORT).map((item) => toDashboardItem(item, now))
 
 export const getItemsByType = (
   type: ItemTypeId,
   now: number = Date.now(),
-): DashboardItem[] => getBrowserItems((item) => item.type === type, now)
+): DashboardItem[] =>
+  getBrowserItems(
+    items.filter((item) => item.type === type),
+    now,
+  )
 
 export const getItemsByCollection = (
   collectionId: string,
   now: number = Date.now(),
-): DashboardItem[] =>
-  getBrowserItems((item) => item.collectionIds.includes(collectionId), now)
+): DashboardItem[] => getBrowserItems(getItemsInCollection(collectionId), now)
 
 export const getFavoriteItems = (now: number = Date.now()): DashboardItem[] =>
-  getBrowserItems((item) => item.favorite, now)
+  getBrowserItems(
+    items.filter((item) => item.favorite),
+    now,
+  )
 
 export const getCollectionById = (id: string): Collection | undefined =>
-  collections.find((collection) => collection.id === id)
+  findCollection(id)

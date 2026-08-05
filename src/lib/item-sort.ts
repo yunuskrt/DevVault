@@ -3,6 +3,8 @@
  * pull it in without dragging the whole vault into the browser bundle.
  */
 
+import { byTextAsc, byUpdatedAtDesc } from '@/lib/sort-utils'
+
 /** The minimum an item needs to be sortable; `DashboardItem` satisfies it. */
 type SortableItem = {
   title: string
@@ -23,12 +25,8 @@ export type ItemSortId = (typeof ITEM_SORT_OPTIONS)[number]['id']
 
 export const DEFAULT_ITEM_SORT: ItemSortId = 'recent'
 
-const byUpdatedAtDesc = (a: SortableItem, b: SortableItem) =>
-  new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-
-/** Fixed locale so the ordering does not shift with the runtime's default. */
 const byTitleAsc = (a: SortableItem, b: SortableItem) =>
-  a.title.localeCompare(b.title, 'en', { sensitivity: 'base' })
+  byTextAsc(a.title, b.title)
 
 /**
  * "Pinned first" and "Favorites first" are orderings, not filters: flagged
@@ -49,6 +47,6 @@ const COMPARATORS: Record<
 }
 
 export const sortItems = <T extends SortableItem>(
-  items: T[],
+  items: readonly T[],
   sort: ItemSortId,
 ): T[] => [...items].sort(COMPARATORS[sort])
