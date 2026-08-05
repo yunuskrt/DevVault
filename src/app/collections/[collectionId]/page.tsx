@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import MainHeader from '@/components/dashboard/MainHeader'
 import ItemBrowser from '@/components/dashboard/ItemBrowser'
 import { getCollectionById, getItemsByCollection } from '@/lib/dashboard-data'
-import { collections } from '@/lib/mock-data'
+import { getAllCollectionIds } from '@/lib/vault-index'
 import { pluralize } from '@/lib/format'
 
 type Props = {
@@ -11,7 +11,7 @@ type Props = {
 }
 
 export const generateStaticParams = () =>
-  collections.map((collection) => ({ collectionId: collection.id }))
+  getAllCollectionIds().map((collectionId) => ({ collectionId }))
 
 const CollectionPage = async ({ params }: Props) => {
   const { collectionId } = await params

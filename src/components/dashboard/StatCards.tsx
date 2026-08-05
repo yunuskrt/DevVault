@@ -1,7 +1,7 @@
 import React from 'react'
 import { Card } from '@/components/ui/card'
 import { WIDE_GRID_CLASS } from '@/lib/ui-classes'
-import type { DashboardStat } from '@/lib/dashboard-data'
+import type { DashboardStat } from '@/types/dashboard'
 
 type Props = {
   stats: DashboardStat[]

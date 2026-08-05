@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import type { DashboardItem } from '@/lib/dashboard-data'
+import type { DashboardItem } from '@/types/dashboard'
 import {
   DEFAULT_ITEM_SORT,
   ITEM_SORT_OPTIONS,

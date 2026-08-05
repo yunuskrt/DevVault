@@ -11,7 +11,9 @@
  * request path and be rebuilt when the vault changes on disk.
  */
 
-import { collections, items, type Collection, type Item } from '@/lib/mock-data'
+import { collections, items } from '@/lib/mock-data'
+import { byUpdatedAtDesc } from '@/lib/sort-utils'
+import type { Collection, Item } from '@/types/vault'
 
 const collectionsById = new Map(
   collections.map((collection) => [collection.id, collection]),
@@ -36,6 +38,22 @@ const NO_ITEMS: readonly Item[] = []
 
 export const findCollection = (id: string): Collection | undefined =>
   collectionsById.get(id)
+
+/** Every collection id, in vault order. For `generateStaticParams`. */
+export const getAllCollectionIds = (): string[] => [...collectionsById.keys()]
+
+/**
+ * The `limit` most recently updated collections. The sidebar and the dashboard
+ * ask the same question with different limits and map the answer to different
+ * shapes, so the query lives here rather than in either of them.
+ *
+ * Copies before sorting: `collections` is the vault's own array and every
+ * other module-scope reader would see it reordered.
+ */
+export const topCollectionsByRecency = (
+  limit: number,
+): readonly Collection[] =>
+  [...collections].sort(byUpdatedAtDesc).slice(0, limit)
 
 /**
  * The items filed under a collection, in vault order. Readonly because the

@@ -4,15 +4,183 @@
 
 <!-- Not Started|In Progress|Completed -->
 
-Not Started
+In Progress
 
 ## Goals
 
 <!-- Goals & requirements -->
 
+### Lib Structure and Domain Types
+
+Refactor-only. No user-facing change: every route must render the same cards,
+counts, colours and text it does today. Six findings from the refactor scan of
+`src/lib/`; findings 7, 8 and 9 were reviewed and excluded.
+
+Branch: `refactor/lib-structure`
+
+Two new files under `src/types/`, one new lib module, no deletions. Findings 1
+and 2 are mechanical — no logic moves and `tsc` catches every miss — but they
+touch nearly every import in `src/`. Findings 3–6 are the ones with behaviour
+nearby.
+
+---
+
+**1. Domain types move to `src/types/vault.ts`**
+
+`mock-data.ts:1-74` defines `ItemTypeId`, `ItemType`, `Collection` and the
+`Item` union (`ItemBase`, `CodeItem`, `TextItem`, `UrlItem`, `ImageItem`,
+`FileItem`) above the data arrays. Six modules import it for types alone:
+`item-types.ts:11`, `vault-index.ts:14`, `dashboard-nav.ts:2`,
+`dashboard-data.ts:1-7`, `TypeIcon.tsx:3`, and
+`collections/[collectionId]/page.tsx:6` (data, see finding 5).
+
+Move all of it — including the unexported union members and every doc comment —
+to `src/types/vault.ts`. `mock-data.ts` then imports its own types and exports
+only `itemTypes`, `collections` and `items`. The point is that replacing mock
+data with filesystem reads becomes an edit to one module instead of eight.
+
+`ItemView` stays in `src/types/items.ts` (user's call). It is UI state, not
+vault data, and the two files say so by being separate.
+
+**2. `dashboard-data.ts` splits three ways**
+
+It currently holds types (21-46), a presentation lookup (48-56), four mappers
+(58-88, 105-117) and ten query accessors.
+
+- `DashboardStat`, `DashboardItem`, `DashboardCollection` →
+  `src/types/dashboard.ts`. These are imported as types by 13 files; they are
+  shared presentation types, not an implementation detail of the accessors that
+  happen to sit beside them.
+- `toDashboardItem`, `toDashboardCollection`, `copyTextFor` and
+  `collectionNames` → `src/lib/dashboard-mappers.ts`.
+- `dashboard-data.ts` keeps the ten accessors and `getBrowserItems`.
+
+**`TYPE_LABELS` has to move with the mappers, not stay behind.**
+`toDashboardItem` reads it, and `dashboard-data.ts` will import the mappers —
+so leaving `TYPE_LABELS` in `dashboard-data.ts` creates a cycle. Its only other
+reader is `CollectionCard.tsx:54`, whose import path changes to
+`@/lib/dashboard-mappers`. A presentation label map in a module called
+"mappers" is not a perfect home; it is the correct one until finding 7 moves
+labels onto `ITEM_TYPE_META`, which is deliberately out of scope here.
+
+Check the resulting graph has no cycle: `dashboard-data` → `dashboard-mappers`
+→ (`vault-index`, `format`, `item-types`, `types/*`). Nothing in that second
+row may import `dashboard-data`.
+
+**3. "Top N collections by recency" is written twice**
+
+`dashboard-nav.ts:52-64` and `dashboard-data.ts:119-125` both sort
+`collections` with `byUpdatedAtDesc`, slice to a limit, then derive item count
+and dominant type per collection. Only the limit and the output shape differ.
+
+Add to `vault-index.ts`:
+
+```ts
+export const topCollectionsByRecency = (limit: number): readonly Collection[]
+```
+
+Named for what it returns, not `getRecentCollections` — `dashboard-data.ts`
+already exports that name for the `DashboardCollection` version, and the two
+must stay distinguishable. `vault-index.ts` gains an import of `sort-utils`,
+which imports nothing, so the module stays free of anything but data.
+
+Both call sites then map the result to their own shape. `SIDEBAR_COLLECTION_LIMIT
+= 3` and `RECENT_COLLECTION_LIMIT = 4` both stay where they are — the
+duplication was the query, not the numbers, and those are genuinely different
+questions.
+
+**4. `colorForType` in `item-types.ts`**
+
+`getDominantTypeColor` (`item-types.ts:65-71`) and `CollectionCard.tsx:17-18`
+both compute "first type → its colour, else undefined". They are duplicated
+only because one takes raw `readonly Item[]` and the other already has
+`dominantTypes: ItemTypeId[]`.
+
+```ts
+export const colorForType = (type?: ItemTypeId): string | undefined =>
+  type ? ITEM_TYPE_META[type].color : undefined
+```
+
+`getDominantTypeColor` becomes `colorForType(getDominantTypes(items)[0])` and
+`CollectionCard` becomes `colorForType(collection.dominantTypes[0])`. The
+optional parameter is the whole point — both callers index into a possibly
+empty array, and the muted-dot fallback for `Resources & Links` depends on that
+returning `undefined` rather than throwing.
+
+**5. The collection page stops reaching into `mock-data`**
+
+`collections/[collectionId]/page.tsx:6,12-13` imports the `collections` array
+directly for `generateStaticParams`, while the sibling `items/[type]/page.tsx`
+uses `typeNav` for the identical job. Every other read on that page goes
+through `dashboard-data`.
+
+Add `getAllCollectionIds(): string[]` to `vault-index.ts` and use it. After
+this, `mock-data.ts` is imported by exactly three lib modules and nothing else
+— which is the property that makes finding 1 worth having.
+
+**6. Rename the `collectionNames` helper**
+
+`dashboard-data.ts:58` names a private helper the same as the
+`DashboardItem.collectionNames` field it fills, so line 84 reads
+`collectionNames: collectionNames(item.collectionIds)`. Rename it
+`resolveCollectionNames` as it moves into `dashboard-mappers.ts`.
+
+---
+
+### Excluded
+
+- **`TYPE_LABELS` vs `itemTypes[].label`** (finding 7). Third feature it has
+  been flagged in, and it stays open by choice: the fix is to put `label` on
+  `ITEM_TYPE_META` and drop both existing copies, which is a data change
+  touching `mock-data.ts` and every type-label reader. It deserves its own
+  branch rather than riding along with a structural move.
+- **Hex-alpha suffixes** (`${color}1f`, `${color}33`) at two call sites with
+  different values (finding 8). A `withAlpha` helper saves nothing at two.
+- **`src/lib/` subfolders** (user's call). 11 flat files is not yet painful and
+  the right grouping will be clearer once `git/` and `filesystem/` exist.
+
 ## Notes
 
 <!-- Any extra notes -->
+
+**Regression baselines.** Unchanged from the previous two features; all must
+still hold:
+
+- `/` 21 cards (4 stats + 4 collections + 3 pinned + 10 recent),
+  `/favorites` 5, `/collections` 6, `react-patterns` 2, `devops-commands` 4,
+  `context-files` 3, `resources-links` 0, snippet 3, command 2, url 1, image 1.
+- Collection dot colours: 3 × `#3b82f6`, 2 × `#a855f7`, 2 × `#f59553`,
+  1 × `#eab308`; `Resources & Links` muted with no footer icons.
+- 13 accent gradients on `/`: 4 blue, 3 purple, 2 pink, 1 each
+  green/grey/yellow/orange.
+- `/collections/nope` 404s and all six collections prerender;
+  `aria-current="page"` still lands on collection routes and `/favorites`;
+  every `Pinned`/`Favorite`/type-icon label still carries `role="img"`.
+- `New Snippet` renders on `/items/snippet` and on no other list page.
+- `npm run build` passes with 19 routes prerendering, `tsc --noEmit` clean,
+  dev log free of errors and hydration warnings.
+
+**Ordering.** 1 first (mechanical, and it touches the files the rest edit),
+then 2, then 3–6 in any order. Run `tsc --noEmit` after each of 1 and 2 rather
+than at the end — both are pure import churn and the compiler is the test.
+
+**Sidebar order is a real check, not a formality.** Finding 3 changes how
+`collectionNav` obtains its three collections. The sidebar must still list
+React Patterns, AI Prompts and DevOps & Commands, in that order, with counts
+2/2/4 and dots `#3b82f6`/`#a855f7`/`#f59553`. `getRecentCollections` must still
+yield those three plus Python Snippets.
+
+**Watch for.** `topCollectionsByRecency` returns `readonly Collection[]` from
+the index's own arrays — it must copy before sorting, the way
+`getItemsInCollection`'s contract already forces on its callers. A `.sort()` on
+the shared `collections` array would reorder the vault for every other reader
+at module scope.
+
+**Still open going in:** the visual-verification backlog is now eight features
+deep and every claim in those entries is structural. This feature touches no
+markup at all, so it neither adds to nor clears that risk — but the
+`ui-reviewer` agent has Playwright, and running it once against `main` would
+close out the whole backlog rather than another entry inheriting it.
 
 ## History
 

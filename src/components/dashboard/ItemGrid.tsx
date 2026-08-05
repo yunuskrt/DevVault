@@ -1,6 +1,6 @@
 import React from 'react'
 import { CARD_GRID_CLASS } from '@/lib/ui-classes'
-import type { DashboardItem } from '@/lib/dashboard-data'
+import type { DashboardItem } from '@/types/dashboard'
 import type { ItemView } from '@/types/items'
 import ItemCard from './ItemCard'
 import EmptyState from './EmptyState'

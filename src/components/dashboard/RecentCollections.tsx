@@ -1,6 +1,6 @@
 import React from 'react'
 import { WIDE_GRID_CLASS } from '@/lib/ui-classes'
-import type { DashboardCollection } from '@/lib/dashboard-data'
+import type { DashboardCollection } from '@/types/dashboard'
 import CollectionCard from './CollectionCard'
 
 type Props = {

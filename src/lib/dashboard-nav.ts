@@ -1,8 +1,11 @@
 import { LayoutDashboard, Star, type LucideIcon } from 'lucide-react'
-import { collections, items, itemTypes, type ItemTypeId } from '@/lib/mock-data'
+import { items, itemTypes } from '@/lib/mock-data'
 import { ITEM_TYPE_META, getDominantTypeColor } from '@/lib/item-types'
-import { byUpdatedAtDesc } from '@/lib/sort-utils'
-import { getItemsInCollection } from '@/lib/vault-index'
+import {
+  getItemsInCollection,
+  topCollectionsByRecency,
+} from '@/lib/vault-index'
+import type { ItemTypeId } from '@/types/vault'
 
 /** How many collections the sidebar lists before "View all collections". */
 export const SIDEBAR_COLLECTION_LIMIT = 3
@@ -49,19 +52,18 @@ export const primaryNav: PrimaryNavEntry[] = [
   },
 ]
 
-export const collectionNav: CollectionNavEntry[] = [...collections]
-  .sort(byUpdatedAtDesc)
-  .slice(0, SIDEBAR_COLLECTION_LIMIT)
-  .map((collection) => {
-    const collectionItems = getItemsInCollection(collection.id)
-    return {
-      id: collection.id,
-      name: collection.name,
-      color: getDominantTypeColor(collectionItems),
-      count: collectionItems.length,
-      href: `/collections/${collection.id}`,
-    }
-  })
+export const collectionNav: CollectionNavEntry[] = topCollectionsByRecency(
+  SIDEBAR_COLLECTION_LIMIT,
+).map((collection) => {
+  const collectionItems = getItemsInCollection(collection.id)
+  return {
+    id: collection.id,
+    name: collection.name,
+    color: getDominantTypeColor(collectionItems),
+    count: collectionItems.length,
+    href: `/collections/${collection.id}`,
+  }
+})
 
 export const typeNav: TypeNavEntry[] = itemTypes.map((type) => ({
   id: type.id,

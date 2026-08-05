@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react'
 import { CARD_GRID_CLASS } from '@/lib/ui-classes'
-import type { DashboardCollection } from '@/lib/dashboard-data'
+import type { DashboardCollection } from '@/types/dashboard'
 import {
   COLLECTION_SORT_OPTIONS,
   DEFAULT_COLLECTION_SORT,

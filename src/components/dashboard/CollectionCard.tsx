@@ -2,8 +2,9 @@ import React from 'react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { pluralize } from '@/lib/format'
-import { ITEM_TYPE_META } from '@/lib/item-types'
-import { TYPE_LABELS, type DashboardCollection } from '@/lib/dashboard-data'
+import { colorForType } from '@/lib/item-types'
+import { TYPE_LABELS } from '@/lib/dashboard-mappers'
+import type { DashboardCollection } from '@/types/dashboard'
 import CollectionCardMenu from './CollectionCardMenu'
 import ColorDot from './ColorDot'
 import TypeIcon from './TypeIcon'
@@ -14,8 +15,7 @@ type Props = {
 
 const CollectionCard = ({ collection }: Props) => {
   /** The dot takes the colour of the first dominant type, so it matches the leftmost footer icon. */
-  const [primaryType] = collection.dominantTypes
-  const dotColor = primaryType ? ITEM_TYPE_META[primaryType].color : undefined
+  const dotColor = colorForType(collection.dominantTypes[0])
 
   return (
     <Card className="relative h-full gap-0 p-4 transition-shadow hover:ring-ring/40">

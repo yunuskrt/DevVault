@@ -1,6 +1,6 @@
 import React from 'react'
 import { ITEM_TYPE_META } from '@/lib/item-types'
-import type { ItemTypeId } from '@/lib/mock-data'
+import type { ItemTypeId } from '@/types/vault'
 
 type Props = {
   type: ItemTypeId
