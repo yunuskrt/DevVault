@@ -8,6 +8,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import ColorDot from './ColorDot'
 
 type Props = {
   label: string
@@ -44,14 +45,7 @@ const SidebarRow = ({
   )
 
   const marker = dot ? (
-    <span
-      aria-hidden="true"
-      className={cn(
-        'size-2 shrink-0 rounded-full',
-        !dotColor && 'bg-muted-foreground',
-      )}
-      style={dotColor ? { backgroundColor: dotColor } : undefined}
-    />
+    <ColorDot color={dotColor} />
   ) : iconColor ? (
     <span className="flex shrink-0 items-center" style={{ color: iconColor }}>
       {icon}

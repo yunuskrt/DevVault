@@ -3,13 +3,6 @@
 import React, { useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import type { DashboardItem } from '@/lib/dashboard-data'
 import {
   DEFAULT_ITEM_SORT,
@@ -20,6 +13,7 @@ import {
 import type { ItemView } from '@/types/items'
 import ItemGrid from './ItemGrid'
 import ViewToggle from './ViewToggle'
+import SortSelect from './SortSelect'
 
 type Props = {
   items: DashboardItem[]
@@ -37,31 +31,15 @@ const ItemBrowser = ({ items, emptyMessage, createLabel }: Props) => {
 
   const sorted = useMemo(() => sortItems(items, sort), [items, sort])
 
-  /**
-   * Radix only learns an item's label once SelectContent mounts, so a bare
-   * SelectValue renders blank in the prerendered HTML. Passing the label as a
-   * child gives the trigger its text on the server too.
-   */
-  const sortLabel = ITEM_SORT_OPTIONS.find((option) => option.id === sort)?.label
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Select
+        <SortSelect
           value={sort}
-          onValueChange={(next) => setSort(next as ItemSortId)}
-        >
-          <SelectTrigger size="sm" className="w-48" aria-label="Sort items by">
-            <SelectValue>{sortLabel}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {ITEM_SORT_OPTIONS.map((option) => (
-              <SelectItem key={option.id} value={option.id}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          onChange={setSort}
+          options={ITEM_SORT_OPTIONS}
+          label="Sort items by"
+        />
 
         <div className="flex items-center gap-2">
           <ViewToggle value={view} onChange={setView} />

@@ -6,6 +6,7 @@ import { ITEM_TYPE_META } from '@/lib/item-types'
 import type { DashboardItem } from '@/lib/dashboard-data'
 import type { ItemView } from '@/types/items'
 import CopyButton from './CopyButton'
+import TypeIcon from './TypeIcon'
 
 type Props = {
   item: DashboardItem
@@ -13,7 +14,7 @@ type Props = {
 }
 
 const ItemCard = ({ item, view }: Props) => {
-  const { icon: Icon, color } = ITEM_TYPE_META[item.type]
+  const { color } = ITEM_TYPE_META[item.type]
   const isList = view === 'list'
 
   const accent = (
@@ -26,14 +27,8 @@ const ItemCard = ({ item, view }: Props) => {
     />
   )
 
-  const typeIcon = (
-    <span
-      className="flex size-8 shrink-0 items-center justify-center rounded-lg"
-      style={{ backgroundColor: `${color}1f`, color }}
-    >
-      <Icon className="size-4" />
-    </span>
-  )
+  const typeIcon = <TypeIcon type={item.type} chip />
+
 
   const markers = (
     <>

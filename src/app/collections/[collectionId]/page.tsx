@@ -4,6 +4,7 @@ import MainHeader from '@/components/dashboard/MainHeader'
 import ItemBrowser from '@/components/dashboard/ItemBrowser'
 import { getCollectionById, getItemsByCollection } from '@/lib/dashboard-data'
 import { collections } from '@/lib/mock-data'
+import { pluralize } from '@/lib/format'
 
 type Props = {
   params: Promise<{ collectionId: string }>
@@ -26,7 +27,7 @@ const CollectionPage = async ({ params }: Props) => {
     <>
       <MainHeader
         title={collection.name}
-        subtitle={`${collectionItems.length} ${collectionItems.length === 1 ? 'item' : 'items'} in this collection`}
+        subtitle={`${pluralize(collectionItems.length, 'item')} in this collection`}
       />
       <div className="p-6">
         <ItemBrowser

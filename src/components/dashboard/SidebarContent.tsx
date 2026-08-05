@@ -68,8 +68,8 @@ const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
       <div className={cn('shrink-0 space-y-2 px-3 pb-3', collapsed && 'px-2')}>
         <Button className={cn('w-full', collapsed && 'px-0')}>
           <Plus className="size-4" />
-          {!collapsed && 'New Item'}
-          {collapsed && <span className="sr-only">New Item</span>}
+          {/* The label stays in the DOM when collapsed so the button keeps its name. */}
+          <span className={collapsed ? 'sr-only' : undefined}>New Item</span>
         </Button>
         <Button
           variant="outline"
@@ -79,8 +79,7 @@ const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
           )}
         >
           <FolderPlus className="size-4" />
-          {!collapsed && 'New Collection'}
-          {collapsed && <span className="sr-only">New Collection</span>}
+          <span className={collapsed ? 'sr-only' : undefined}>New Collection</span>
         </Button>
       </div>
 
