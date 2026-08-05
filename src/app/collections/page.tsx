@@ -1,18 +1,21 @@
 import React from 'react'
 import MainHeader from '@/components/dashboard/MainHeader'
-import { collections } from '@/lib/mock-data'
+import CollectionBrowser from '@/components/dashboard/CollectionBrowser'
+import { getAllCollections } from '@/lib/dashboard-data'
 
 type Props = {}
 
 const CollectionsPage = ({}: Props) => {
+  const allCollections = getAllCollections()
+
   return (
     <>
       <MainHeader
         title="Collections"
-        subtitle={`${collections.length} ${collections.length === 1 ? 'collection' : 'collections'} in your vault`}
+        subtitle={`${allCollections.length} ${allCollections.length === 1 ? 'collection' : 'collections'} in your vault`}
       />
       <div className="p-6">
-        <h2 className="text-lg font-semibold">Main</h2>
+        <CollectionBrowser collections={allCollections} />
       </div>
     </>
   )

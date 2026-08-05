@@ -8,6 +8,10 @@ import {
 import { formatRelativeTime } from '@/lib/format'
 import { getDominantTypes } from '@/lib/item-types'
 import { DEFAULT_ITEM_SORT, sortItems } from '@/lib/item-sort'
+import {
+  DEFAULT_COLLECTION_SORT,
+  sortCollections,
+} from '@/lib/collection-sort'
 
 const RECENT_ITEM_LIMIT = 10
 const RECENT_COLLECTION_LIMIT = 4
@@ -88,23 +92,41 @@ export const getDashboardStats = (): DashboardStat[] => [
   },
 ]
 
+const toDashboardCollection = (
+  collection: Collection,
+  now: number,
+): DashboardCollection => {
+  const collectionItems = items.filter((item) =>
+    item.collectionIds.includes(collection.id),
+  )
+
+  return {
+    ...collection,
+    count: collectionItems.length,
+    updatedLabel: formatRelativeTime(collection.updatedAt, now),
+    dominantTypes: getDominantTypes(collectionItems),
+  }
+}
+
 export const getRecentCollections = (
   now: number = Date.now(),
 ): DashboardCollection[] =>
   [...collections]
     .sort(byUpdatedAtDesc)
     .slice(0, RECENT_COLLECTION_LIMIT)
-    .map((collection) => {
-      const collectionItems = items.filter((item) =>
-        item.collectionIds.includes(collection.id),
-      )
-      return {
-        ...collection,
-        count: collectionItems.length,
-        updatedLabel: formatRelativeTime(collection.updatedAt, now),
-        dominantTypes: getDominantTypes(collectionItems),
-      }
-    })
+    .map((collection) => toDashboardCollection(collection, now))
+
+/**
+ * Every collection, pre-sorted with the browser's own default so the server
+ * render and the client's initial state agree.
+ */
+export const getAllCollections = (
+  now: number = Date.now(),
+): DashboardCollection[] =>
+  sortCollections(
+    collections.map((collection) => toDashboardCollection(collection, now)),
+    DEFAULT_COLLECTION_SORT,
+  )
 
 export const getPinnedItems = (now: number = Date.now()): DashboardItem[] =>
   items
