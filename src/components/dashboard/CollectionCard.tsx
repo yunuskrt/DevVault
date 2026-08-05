@@ -1,10 +1,12 @@
 import React from 'react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { pluralize } from '@/lib/format'
 import { ITEM_TYPE_META } from '@/lib/item-types'
 import { TYPE_LABELS, type DashboardCollection } from '@/lib/dashboard-data'
 import CollectionCardMenu from './CollectionCardMenu'
+import ColorDot from './ColorDot'
+import TypeIcon from './TypeIcon'
 
 type Props = {
   collection: DashboardCollection
@@ -18,14 +20,7 @@ const CollectionCard = ({ collection }: Props) => {
   return (
     <Card className="relative h-full gap-0 p-4 transition-shadow hover:ring-ring/40">
       <div className="flex items-center gap-2">
-        <span
-          aria-hidden="true"
-          className={cn(
-            'size-2.5 shrink-0 rounded-full',
-            !dotColor && 'bg-muted-foreground',
-          )}
-          style={dotColor ? { backgroundColor: dotColor } : undefined}
-        />
+        <ColorDot color={dotColor} size="md" />
         {/*
          * The title is the only anchor; its ::after covers the whole card so
          * the card is clickable without nesting the menu's button inside an
@@ -45,7 +40,7 @@ const CollectionCard = ({ collection }: Props) => {
       </div>
 
       <p className="mt-1.5 text-xs text-muted-foreground">
-        {collection.count} {collection.count === 1 ? 'item' : 'items'}
+        {pluralize(collection.count, 'item')}
       </p>
 
       {/* Fixed height so cards stay the same size whether or not the collection has a description. */}
@@ -55,18 +50,9 @@ const CollectionCard = ({ collection }: Props) => {
 
       <div className="mt-auto flex items-center gap-2 pt-3">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {collection.dominantTypes.map((type) => {
-            const { icon: Icon, color } = ITEM_TYPE_META[type]
-            return (
-              <Icon
-                key={type}
-                className="size-4 shrink-0"
-                style={{ color }}
-                role="img"
-                aria-label={TYPE_LABELS[type]}
-              />
-            )
-          })}
+          {collection.dominantTypes.map((type) => (
+            <TypeIcon key={type} type={type} label={TYPE_LABELS[type]} />
+          ))}
         </div>
         <span className="shrink-0 text-xs text-muted-foreground">
           {collection.updatedLabel}

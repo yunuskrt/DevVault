@@ -4,6 +4,7 @@ import MainHeader from '@/components/dashboard/MainHeader'
 import ItemBrowser from '@/components/dashboard/ItemBrowser'
 import { getTypeNavEntry, typeNav } from '@/lib/dashboard-nav'
 import { getItemsByType } from '@/lib/dashboard-data'
+import { pluralize } from '@/lib/format'
 
 type Props = {
   params: Promise<{ type: string }>
@@ -24,7 +25,7 @@ const ItemTypePage = async ({ params }: Props) => {
     <>
       <MainHeader
         title={entry.label}
-        subtitle={`${entry.count} ${entry.count === 1 ? 'item' : 'items'} in your vault`}
+        subtitle={`${pluralize(entry.count, 'item')} in your vault`}
       />
       <div className="p-6">
         <ItemBrowser

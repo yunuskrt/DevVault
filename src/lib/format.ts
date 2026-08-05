@@ -1,3 +1,13 @@
+/**
+ * Count followed by its noun, e.g. "1 item" or "6 collections". Pass `plural`
+ * only for a noun that does not simply take an "s".
+ */
+export const pluralize = (
+  count: number,
+  singular: string,
+  plural: string = `${singular}s`,
+): string => `${count} ${count === 1 ? singular : plural}`
+
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
