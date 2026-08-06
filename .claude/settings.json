@@ -13,7 +13,9 @@
       "Read(//Users/yunuskerestecioglu/**)",
       "mcp__playwright__browser_console_messages",
       "mcp__playwright__browser_close",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "mcp__playwright__browser_hover",
+      "mcp__playwright__browser_evaluate"
     ]
   }
 }
