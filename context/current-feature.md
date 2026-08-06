@@ -1,51 +1,18 @@
-# Current Feature: Git Vault 2 — Sidebar Data Threading
+# Current Feature
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-- Break the `SidebarContent.tsx` (`'use client'`) → `dashboard-nav.ts` → `mock-data.ts` import chain, so filesystem reads never reach the browser when spec 3 lands.
-- Convert `dashboard-nav.ts`'s module-scope constants `primaryNav`, `collectionNav`, `typeNav` into `getPrimaryNav()`, `getCollectionNav()`, `getTypeNav()`, returning the same shapes and staying synchronous.
-- Keep `getTypeNavEntry(id)` working for `/items/[type]`'s 404 check and header label — pass the nav array in if that keeps the page simplest.
-- Add a single `SidebarNav` type in `src/types/dashboard.ts` carrying all three lists; thread one prop `layout.tsx` (server) → `DashboardShell` → `Sidebar` → `SidebarContent`.
-- Make everything crossing the client boundary serializable: pass icon **keys**, not `LucideIcon` components. Types resolve via `ITEM_TYPE_META`; `LayoutDashboard` and `Star` on the two primary rows need equivalent treatment.
-- Acceptance: grep proves `SidebarContent.tsx` no longer imports `dashboard-nav`, and no `'use client'` file reaches `mock-data.ts` through any chain. Record the grep in history so spec 3 can rely on it.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-Spec: `context/features/git-vault-2-sidebar-data-spec.md` (2 of 7). Series
-overview: `context/features/git-vault-0-overview.md`. Design:
-`docs/git-vault-architecture.md` §1.1.
-
-**Pure refactor, zero behaviour change.** `mock-data.ts` still exists and is
-still the source at the end of this spec. Doing the prop-threading here keeps it
-out of spec 3's async conversion branch, and gives that branch an exact
-regression baseline. Nothing here is Git-related.
-
-Verification — every number is unchanged from today; any difference is a bug:
-
-1. Sidebar collections: React Patterns `#3b82f6`, AI Prompts `#a855f7`, DevOps & Commands `#f59553`, in that order, counts 2 / 2 / 4.
-2. Type rows: Snippet 3, Prompt 2, Note 2, Command 2, File 1, Image 1, URL 1 — each icon in its own colour, visually unchanged.
-3. Primary rows: Dashboard 12, Favorites 5.
-4. Collapsed rail still shows every row with tooltips intact.
-5. Mobile sheet renders the same nav as the desktop aside.
-6. `aria-current="page"` still lands on a collection route and on `/favorites`.
-7. Card counts across all routes match the overview spec's baseline.
-8. `npm run build` passes, `tsc --noEmit` clean, no hydration warnings.
-
-Out of scope: changing the data source (spec 3), making anything async, the
-inert Pinned/Recent sidebar rows, and `GitSyncPanel` (hardcoded until spec 4).
-
-The fiddly part is the icons — the type row and the two primary rows must look
-identical afterwards.
 
 ## History
 
@@ -793,3 +760,136 @@ Known gaps and follow-ups:
   `readOnly`, a collection's `description` still renders nowhere on its own
   page, the display-only controls still give no feedback on click, and there is
   still no lint script or ESLint config.
+
+### Git Vault 2 — Sidebar Data Threading — 2026-08-07
+
+Moved the sidebar's nav derivation to the server and threaded it into the
+client as a prop. Spec 2 of 7
+(`context/features/git-vault-2-sidebar-data-spec.md`). Pure refactor: the
+rendered DOM of all 14 routes is **byte-identical** before and after.
+`mock-data.ts` is untouched and still the source; nothing became async;
+nothing here is Git-related.
+
+**The problem this closes.** `SidebarContent.tsx` is `'use client'` and
+imported `dashboard-nav.ts`, which imports `mock-data.ts`. Harmless while the
+vault is a static array — the arrays just bundle into the browser — but the
+moment spec 3 makes that module a filesystem read, the import chain fails to
+build, and it must: `coding-standards.md` forbids filesystem access reaching
+the browser. Fixing it here rather than inside spec 3 keeps the risky async
+conversion and this wide prop-threading diff out of the same branch, and gives
+spec 3 an exact regression baseline.
+
+**`dashboard-nav.ts` exports functions, not constants.** `primaryNav`,
+`collectionNav` and `typeNav` became `getPrimaryNav()`, `getCollectionNav()`
+and `getTypeNav()` with their initialisers moved verbatim into the bodies.
+`layout.tsx` (a server component) calls all three and passes one `SidebarNav`
+object down through `DashboardShell` → `Sidebar` → `SidebarContent`. One prop
+rather than three threaded through three components. `getTypeNavEntry(id)`
+stayed self-contained rather than taking the nav array, so `/items/[type]`
+remains a single call for both its 404 check and its header.
+
+**Icons were the fiddly part.** A `LucideIcon` is a function and cannot cross
+the boundary as a prop, so a row now *names* its icon. `TypeNavEntry` dropped
+`icon` **and** `color` entirely — the client re-derives both from
+`ITEM_TYPE_META[id]`, which was already client-safe. The two primary rows carry
+a `PrimaryNavIcon` key (`'dashboard'` | `'favorites'`) resolved through the new
+`src/lib/nav-icons.ts`. The key/map coupling is compiler-enforced in both
+directions: `Record<PrimaryNavIcon, LucideIcon>` means adding a key to the type
+without the map fails `tsc`, and vice versa. Verified by mutation.
+
+The nav types moved to `src/types/dashboard.ts` alongside the other
+presentation types. Moving them — not just adding `SidebarNav` — is what lets
+`SidebarContent` drop the `dashboard-nav` import entirely rather than keeping a
+type-only one, which is what the acceptance grep asks for.
+
+**A second chain the spec did not name.** The graph walk found
+`CollectionBrowser` (client) → `CollectionCard` → `dashboard-mappers` →
+`vault-index` → `mock-data`, caused solely by `CollectionCard` importing
+`TYPE_LABELS`. Since "no `'use client'` file reaches `mock-data.ts` through any
+chain" is this spec's stated acceptance criterion, it had to go too. Taken
+(user's call: "you decide") as the fix the history has named for four features
+running: `label` folded into `ITEM_TYPE_META`, `TYPE_LABELS` deleted,
+`toDashboardItem` reading `ITEM_TYPE_META[type].label`. `TypeIcon` now looks
+its own label up and lost the `label` prop that existed *only* to dodge that
+import — which also closes the recorded gap that the prop was optional and
+nothing caught a missing accessible name.
+
+**Acceptance, recorded so spec 3 can rely on it.** Of 20 `'use client'` files,
+**zero** reach `mock-data.ts` through any value-import chain (`import type` is
+erased by the compiler and correctly ignored). `mock-data.ts` now has three
+production importers — `dashboard-data`, `dashboard-nav`, `vault-index` — and
+`dashboard-nav` has exactly two, `layout.tsx` and `items/[type]/page.tsx`, both
+server-side. This is no longer a one-off grep: `client-boundary.test.ts` walks
+the graph on every `npm test` and prints the offending chain on failure.
+
+**Testing.** 118 tests across 10 files, up from 100 across 8.
+`client-boundary.test.ts` (4) enforces the acceptance criterion; two of its
+four tests exist so the suite cannot pass vacuously — one asserts it finds the
+client components it polices, one that it can trace a known multi-hop chain.
+`dashboard-nav.test.ts` (14) covers the four getters plus three properties this
+refactor newly depends on: prop serializability (Next.js catches a bad prop
+only at build; this catches it in a unit run and names the field), a fresh list
+per call (they were shared constants, so a caller sorting one must not corrupt
+the next), and `getTypeNavEntry` misses, which are the 404 on `/items/[type]`.
+
+Every new assertion was mutation-checked: a drifted label, a shared array, an
+icon component back on the entry and a reversed recency comparator each
+produced the expected failure, and the sources were restored. The recency
+mutation is worth recording — the **first** attempt passed because it patched a
+sort expression in `vault-index.ts` that does not exist; the real comparator is
+the shared `byUpdatedAtDesc` in `sort-utils.ts`. Trusting that green run would
+have banked a vacuous test as verified.
+
+**Verification.** The DOM of all 14 routes is byte-identical with scripts
+stripped, which subsumes every count in the spec's list; they were also read
+back individually — collections React Patterns `#3b82f6` 2, AI Prompts
+`#a855f7` 2, DevOps & Commands `#f59553` 4 in that order; types Snippet 3,
+Prompt 2, Note 2, Command 2, File 1, Image 1, URL 1 each in its own colour;
+Dashboard 12 and Favorites 5; `aria-current="page"` correct on
+`/collections/react-patterns` and `/favorites`. This session finally had
+Playwright, so items 4 and 5 were checked in a real browser rather than
+structurally: the collapsed rail keeps all 12 rows icon-only with the tooltip
+reading `Snippet (3)`, and the mobile sheet renders the same 13 rows as the
+desktop aside. All 12 icons and hex colours were read out of the live DOM,
+including the two primary rows through the new key map. `npm run build` passes
+with 19 routes prerendering, `tsc --noEmit` is clean, and the browser console
+had zero errors and zero warnings — no hydration mismatch.
+
+Also verified by mutation: putting a `LucideIcon` back onto `TypeNavEntry`
+fails the build outright with *"Functions cannot be passed directly to Client
+Components"*. So the serializability half of this work has a hard build-time
+guard and cannot silently regress. The import-chain half had none, which is
+why the boundary test now exists.
+
+Known gaps and follow-ups:
+
+- **Work moved from once-per-process to once-per-render.** Three module-scope
+  constants became three calls that `layout.tsx` makes on every render, and
+  `/items/[type]` calls `getTypeNav()` a *second* time by way of
+  `getTypeNavEntry`. Free today — static prerender over 12 in-memory items —
+  but this is exactly what spec 3 makes expensive: each becomes a vault read,
+  and the type page would read the vault twice per render. **Spec 3 needs a
+  caching decision before it makes these async**, and `vault-index.ts` still
+  builds its maps at module scope, which stops being correct at the same
+  moment. Inherent to what the spec asked for, not a defect — but it should be
+  planned for, not discovered.
+- **Two label sources still exist**, now with a test between them.
+  `ITEM_TYPE_META[].label` feeds the cards and `TypeIcon`; `itemTypes[].label`
+  still feeds `getTypeNav()`, so the sidebar and the type-page header read from
+  a different array than the cards do. They agree, and `dashboard-nav.test.ts`
+  now fails if they drift. Deliberately not unified here: it decides whether
+  the vault or the presentation layer owns type labels, and spec 3 is what
+  reworks `itemTypes`. It is a one-line change once that is settled.
+- `SIDEBAR_COLLECTION_LIMIT` is exported but has no consumer outside its own
+  module and its test. Pre-existing, not introduced here.
+- There is still no lint script and no ESLint config, so the boundary test is
+  the only mechanical guard of its kind in the repo.
+- Not visually re-verified beyond the sidebar. Playwright was available and was
+  used for the collapsed rail and the mobile sheet, but the card-layer backlog
+  the previous entries carry — accent gradients, the tag fade mask, the
+  stretched link — was not exercised and stands unchanged.
+- Carried forward untouched: the sidebar's Pinned and Recent rows are still
+  inert `div`s, the sidebar's "Recent" count still means `items.length`,
+  `MainHeader`'s search is still `readOnly`, a collection's `description` still
+  renders nowhere on its own page, `GitSyncPanel` is still hardcoded until
+  spec 4, and the display-only controls still give no feedback on click.
