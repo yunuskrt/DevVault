@@ -13,16 +13,23 @@ import type { Item, ItemTypeId } from '@/types/vault'
 export type ItemTypeMeta = {
   icon: LucideIcon
   color: string
+  label: string
 }
 
+/**
+ * How each item type presents itself. This module imports nothing from the
+ * vault, so client components can read it directly — which is why the label
+ * lives here rather than beside the mappers, where reaching it dragged the
+ * whole vault into the browser bundle.
+ */
 export const ITEM_TYPE_META: Record<ItemTypeId, ItemTypeMeta> = {
-  snippet: { icon: Code2, color: '#3b82f6' },
-  prompt: { icon: Sparkles, color: '#a855f7' },
-  command: { icon: SquareTerminal, color: '#f59553' },
-  note: { icon: NotebookPen, color: '#eab308' },
-  file: { icon: FileText, color: '#8996a3' },
-  image: { icon: ImageIcon, color: '#e868e8' },
-  url: { icon: Link2, color: '#22c55e' },
+  snippet: { icon: Code2, color: '#3b82f6', label: 'Snippet' },
+  prompt: { icon: Sparkles, color: '#a855f7', label: 'Prompt' },
+  command: { icon: SquareTerminal, color: '#f59553', label: 'Command' },
+  note: { icon: NotebookPen, color: '#eab308', label: 'Note' },
+  file: { icon: FileText, color: '#8996a3', label: 'File' },
+  image: { icon: ImageIcon, color: '#e868e8', label: 'Image' },
+  url: { icon: Link2, color: '#22c55e', label: 'URL' },
 }
 
 /**

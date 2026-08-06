@@ -3,7 +3,6 @@ import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { pluralize } from '@/lib/format'
 import { colorForType } from '@/lib/item-types'
-import { TYPE_LABELS } from '@/lib/dashboard-mappers'
 import type { DashboardCollection } from '@/types/dashboard'
 import CollectionCardMenu from './CollectionCardMenu'
 import ColorDot from './ColorDot'
@@ -51,7 +50,7 @@ const CollectionCard = ({ collection }: Props) => {
       <div className="mt-auto flex items-center gap-2 pt-3">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {collection.dominantTypes.map((type) => (
-            <TypeIcon key={type} type={type} label={TYPE_LABELS[type]} />
+            <TypeIcon key={type} type={type} />
           ))}
         </div>
         <span className="shrink-0 text-xs text-muted-foreground">

@@ -4,8 +4,10 @@ import React from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import SidebarContent from './SidebarContent'
+import type { SidebarNav } from '@/types/dashboard'
 
 type Props = {
+  nav: SidebarNav
   collapsed: boolean
   mobileOpen: boolean
   onToggle: () => void
@@ -13,6 +15,7 @@ type Props = {
 }
 
 const Sidebar = ({
+  nav,
   collapsed,
   mobileOpen,
   onToggle,
@@ -26,7 +29,7 @@ const Sidebar = ({
           collapsed ? 'w-16' : 'w-64',
         )}
       >
-        <SidebarContent collapsed={collapsed} onToggle={onToggle} />
+        <SidebarContent nav={nav} collapsed={collapsed} onToggle={onToggle} />
       </aside>
 
       <Sheet open={mobileOpen} onOpenChange={onMobileOpenChange}>
@@ -37,6 +40,7 @@ const Sidebar = ({
         >
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <SidebarContent
+            nav={nav}
             collapsed={false}
             onNavigate={() => onMobileOpenChange(false)}
           />

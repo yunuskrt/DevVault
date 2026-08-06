@@ -6,12 +6,15 @@ import { Button } from '@/components/ui/button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import Sidebar from './Sidebar'
 import MainArea from './MainArea'
+import type { SidebarNav } from '@/types/dashboard'
 
 type Props = {
+  /** Derived on the server by the root layout and threaded down to the nav. */
+  nav: SidebarNav
   children: React.ReactNode
 }
 
-const DashboardShell = ({ children }: Props) => {
+const DashboardShell = ({ nav, children }: Props) => {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -19,6 +22,7 @@ const DashboardShell = ({ children }: Props) => {
     <TooltipProvider>
       <div className="flex h-dvh overflow-hidden">
         <Sidebar
+          nav={nav}
           collapsed={collapsed}
           mobileOpen={mobileOpen}
           onToggle={() => setCollapsed((value) => !value)}

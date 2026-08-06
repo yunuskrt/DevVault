@@ -1,78 +1,67 @@
-import { LayoutDashboard, Star, type LucideIcon } from 'lucide-react'
+/**
+ * Derives the sidebar's three nav lists from the vault.
+ *
+ * These are functions rather than module-scope constants because the sidebar
+ * is a client component: the data has to be produced on the server and handed
+ * down as props, never imported across the boundary. They are synchronous
+ * while the vault is static; reading it from disk makes them async.
+ */
+
 import { items, itemTypes } from '@/lib/mock-data'
-import { ITEM_TYPE_META, getDominantTypeColor } from '@/lib/item-types'
+import { getDominantTypeColor } from '@/lib/item-types'
 import {
   getItemsInCollection,
   topCollectionsByRecency,
 } from '@/lib/vault-index'
-import type { ItemTypeId } from '@/types/vault'
+import type {
+  CollectionNavEntry,
+  PrimaryNavEntry,
+  TypeNavEntry,
+} from '@/types/dashboard'
 
 /** How many collections the sidebar lists before "View all collections". */
 export const SIDEBAR_COLLECTION_LIMIT = 3
 
-export type PrimaryNavEntry = {
-  id: string
-  label: string
-  icon: LucideIcon
-  count: number
-  href?: string
-}
-
-export type CollectionNavEntry = {
-  id: string
-  name: string
-  color?: string
-  count: number
-  href: string
-}
-
-export type TypeNavEntry = {
-  id: ItemTypeId
-  label: string
-  icon: LucideIcon
-  color: string
-  count: number
-  href: string
-}
-
-export const primaryNav: PrimaryNavEntry[] = [
+export const getPrimaryNav = (): PrimaryNavEntry[] => [
   {
     id: 'all',
     label: 'Dashboard',
-    icon: LayoutDashboard,
+    icon: 'dashboard',
     count: items.length,
     href: '/',
   },
   {
     id: 'favorites',
     label: 'Favorites',
-    icon: Star,
+    icon: 'favorites',
     count: items.filter((item) => item.favorite).length,
     href: '/favorites',
   },
 ]
 
-export const collectionNav: CollectionNavEntry[] = topCollectionsByRecency(
-  SIDEBAR_COLLECTION_LIMIT,
-).map((collection) => {
-  const collectionItems = getItemsInCollection(collection.id)
-  return {
-    id: collection.id,
-    name: collection.name,
-    color: getDominantTypeColor(collectionItems),
-    count: collectionItems.length,
-    href: `/collections/${collection.id}`,
-  }
-})
+export const getCollectionNav = (): CollectionNavEntry[] =>
+  topCollectionsByRecency(SIDEBAR_COLLECTION_LIMIT).map((collection) => {
+    const collectionItems = getItemsInCollection(collection.id)
+    return {
+      id: collection.id,
+      name: collection.name,
+      color: getDominantTypeColor(collectionItems),
+      count: collectionItems.length,
+      href: `/collections/${collection.id}`,
+    }
+  })
 
-export const typeNav: TypeNavEntry[] = itemTypes.map((type) => ({
-  id: type.id,
-  label: type.label,
-  icon: ITEM_TYPE_META[type.id].icon,
-  color: ITEM_TYPE_META[type.id].color,
-  count: items.filter((item) => item.type === type.id).length,
-  href: `/items/${type.id}`,
-}))
+export const getTypeNav = (): TypeNavEntry[] =>
+  itemTypes.map((type) => ({
+    id: type.id,
+    label: type.label,
+    count: items.filter((item) => item.type === type.id).length,
+    href: `/items/${type.id}`,
+  }))
 
+/**
+ * Self-contained rather than taking the nav array, so `/items/[type]` stays a
+ * single call for its 404 check and its header.
+ */
 export const getTypeNavEntry = (id: string): TypeNavEntry | undefined =>
-  typeNav.find((entry) => entry.id === id)
+  getTypeNav().find((entry) => entry.id === id)

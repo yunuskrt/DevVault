@@ -9,16 +9,10 @@ type Props = {
    * a chip takes no label, since the card it sits on already names the item.
    */
   chip?: boolean
-  /**
-   * Accessible name for the bare variant. Passed in rather than looked up here
-   * so this component stays free of `dashboard-data`, which would pull the
-   * whole vault into the client bundle by way of `ItemCard`.
-   */
-  label?: string
 }
 
-const TypeIcon = ({ type, chip = false, label }: Props) => {
-  const { icon: Icon, color } = ITEM_TYPE_META[type]
+const TypeIcon = ({ type, chip = false }: Props) => {
+  const { icon: Icon, color, label } = ITEM_TYPE_META[type]
 
   if (chip) {
     return (
