@@ -5,7 +5,15 @@
       "mcp__playwright__browser_navigate",
       "mcp__playwright__browser_snapshot",
       "mcp__playwright__browser_click",
-      "WebSearch"
+      "WebSearch",
+      "Bash(node -p \"const p=require\\('./package.json'\\); JSON.stringify\\({d:p.dependencies,dd:p.devDependencies},null,2\\)\")",
+      "mcp__playwright__browser_resize",
+      "mcp__playwright__browser_take_screenshot",
+      "Bash(ls -la .playwright-mcp/ 2>/dev/null | head -20; find ~ -maxdepth 4 -name 'dashboard.png' -newermt '-5 minutes' 2>/dev/null | head)",
+      "Read(//Users/yunuskerestecioglu/**)",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_close",
+      "Bash(git check-ignore *)"
     ]
   }
 }

@@ -1,18 +1,112 @@
-# Current Feature
+# Current Feature: Git Vault 1 — Vault Foundation
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-Not Started
+In Progress
 
 ## Goals
 
 <!-- Goals & requirements -->
 
+Spec: `context/features/git-vault-1-foundation-spec.md` (1 of 7; series overview
+`context/features/git-vault-0-overview.md`, design `docs/git-vault-architecture.md`).
+
+Build the layer that turns a directory of Markdown files into `Item[]` and
+`Collection[]`, plus a seed script that writes such a directory from today's mock
+data. **No `src/app/` or `src/components/` change — the app still renders from
+`mock-data.ts` at the end of this spec (the swap is spec 3). No Git; `simple-git`
+is not installed here.**
+
+- **Dependencies** — add `yaml`, `server-only`, `zod`. Nothing else. YAML via
+  `yaml`, not `gray-matter` (unmaintained since 2021, bundles a stale js-yaml v3).
+- **`src/lib/vault/config.ts`** — `VaultConfig` (`schemaVersion: 1`, `name`,
+  `autoCommit`, `defaultBranch`); `resolveVaultPath()` reads `DEVVAULT_PATH`,
+  resolves absolute, asserts the directory exists, and throws a `VaultError`
+  naming what to set and where when unset; `readVaultConfig(root)` validates
+  `.devvault/config.json` with Zod and falls back to documented defaults
+  (`autoCommit: false`, `defaultBranch: 'main'`, `name` = directory name) when the
+  file is missing. Add `DEVVAULT_PATH` to `.env.local` and document it in
+  `README.md`.
+- **`src/lib/filesystem/`** — `paths.ts` with `resolveInVault(root, relative)` as
+  the security boundary (traversal outside the root throws; say so in a comment);
+  `walk.ts` recursive walk returning vault-relative paths, skipping `.git/`,
+  `.devvault/cache/` and dotfiles, walking nested type dirs (`snippets/react/…`)
+  which are **not** collections; `read-write.ts` with `readTextFile`,
+  `writeTextFile`, `ensureDir`, `removeFile` (UTF-8, `\n`).
+- **`src/lib/markdown/frontmatter.ts`** — `parseFrontmatter(raw)` →
+  `{ data: unknown, body: string }` (no `---` block ⇒ `data: {}`, whole input as
+  body) and `serializeFrontmatter(data, body)`. Serialization must be **stable**:
+  fixed key order, `\n` endings, no trailing whitespace, no re-quoting churn — an
+  unchanged item must serialize byte-identically to what was read.
+- **`src/lib/vault/schema.ts`** — Zod mirroring `src/types/vault.ts`:
+  `itemSchema` as a `z.discriminatedUnion('type', …)` with the same five members,
+  plus `collectionSchema` and the config schema. The frontmatter key
+  `collections` ⇄ TypeScript `collectionIds` mapping lives here, not in callers.
+  Cross-reference `src/types/vault.ts` in comments both ways so drift is visible.
+- **`src/lib/vault/reader.ts`** — `readVault(root): Promise<VaultLoadResult>`
+  where `VaultLoadResult = { items, collections, errors: Array<{ path, message }> }`.
+  A malformed file never throws — it lands in `errors` with a human-actionable
+  message ("`type` is missing", not a raw Zod dump). Duplicate `id` across two
+  files is an error listing both paths, never a silent pick. Collection
+  `updatedAt` is **derived** as `max(updatedAt)` over member items, falling back
+  to the collection file's mtime when empty. Binary items (`image`, `file`) read
+  from their sidecar `<filename>.md`; the asset itself is not read.
+- **`scripts/seed-vault.ts`** — standalone Node script (`npm run seed` /
+  `npx tsx`) writing `mock-data.ts` to `$DEVVAULT_PATH` as real files. No
+  `git init`, no commit. Refuses a non-empty vault without `--force`.
+
+### Verification
+
+1. `npm run seed` produces the §3.1 tree: 6 files under `collections/`, 12 item
+   files across `snippets/`, `prompts/`, `notes/`, `commands/`, `links/`,
+   `files/`, `images/`.
+2. Read one seeded file by eye — legible frontmatter, body is the item content.
+3. `readVault(root)` returns 12 items and 6 collections, `errors` empty, deep-
+   equal to `mock-data.ts` **except** collection `updatedAt`, asserted separately
+   against `max(member updatedAt)`.
+4. Round-trip: `serializeFrontmatter(parseFrontmatter(f))` byte-identical to `f`
+   for all 18 seeded files.
+5. Corrupt one file (delete its `type:`) — `readVault` returns 11 items and one
+   `errors` entry naming that path.
+6. `resolveInVault(root, '../../etc/passwd')` throws.
+7. `npm run build` passes, `tsc --noEmit` clean, app renders exactly as before.
+
 ## Notes
 
 <!-- Any extra notes -->
+
+**Out of scope:** any change to `src/app/`, `src/components/`,
+`dashboard-data.ts`, `dashboard-nav.ts` or `vault-index.ts` (spec 3); writing
+items back to disk (spec 5) — this spec reads only and the seed script is the one
+writer, outside the app; anything Git (spec 4); deleting `mock-data.ts` (spec 3).
+
+**Decisions already settled** (series overview — do not re-open mid-spec):
+vault root is `DEVVAULT_PATH`, unset is an error not a `process.cwd()` fallback;
+`id` is a title slug with `-2`/`-3` on collision, stable across later renames;
+one `.md` per collection in `collections/`, no `updatedAt` stored on it; binary
+items get an asset plus sidecar `.md`.
+
+**Standing constraints:** `lib/filesystem/` (and later `lib/git/`) begin with
+`import 'server-only'`; nothing in `src/components/` imports either, ever. Never
+surface raw stderr, stack traces or repository paths to the browser.
+
+**Regression baseline** (unchanged by this spec, since nothing the UI reads
+changes): `/` 21 cards · `/favorites` 5 · `/collections` 6 · `react-patterns` 2 ·
+`devops-commands` 4 · `context-files` 3 · `resources-links` 0 ·
+`/items/snippet` 3 · `command` 2 · `url` 1 · `image` 1; stats 12/6/5/3.
+
+**Settled at `/feature start`:**
+
+- **Vitest, with committed tests** (user's call). The verification list is five
+  genuine unit assertions and specs 3–7 reuse them as regression checks.
+- **`DEVVAULT_PATH=~/devvault`** for development (user's call).
+- **`resolveVaultPath` / `readVaultConfig` stay `async`**, as §4.2 sketches them
+  — the existence check and the config read are both async `fs` calls.
+- **`tsx` joins the devDependencies.** The spec says "nothing else" but also
+  names `npx tsx` as the runner; an ad-hoc download is not a repeatable
+  `npm run seed`.
 
 ## History
 
