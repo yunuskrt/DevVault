@@ -5,23 +5,13 @@
  */
 
 import { formatRelativeTime } from '@/lib/format'
-import { getDominantTypes } from '@/lib/item-types'
+import { ITEM_TYPE_META, getDominantTypes } from '@/lib/item-types'
 import { findCollection, getItemsInCollection } from '@/lib/vault-index'
 import type {
   DashboardCollection,
   DashboardItem,
 } from '@/types/dashboard'
-import type { Collection, Item, ItemTypeId } from '@/types/vault'
-
-export const TYPE_LABELS: Record<ItemTypeId, string> = {
-  snippet: 'Snippet',
-  prompt: 'Prompt',
-  note: 'Note',
-  command: 'Command',
-  file: 'File',
-  image: 'Image',
-  url: 'URL',
-}
+import type { Collection, Item } from '@/types/vault'
 
 const resolveCollectionNames = (ids: string[]) =>
   ids.map((id) => findCollection(id)?.name).filter((name) => name !== undefined)
@@ -50,7 +40,7 @@ const copyTextFor = (item: Item): string => {
 export const toDashboardItem = (item: Item, now: number): DashboardItem => ({
   ...item,
   collectionNames: resolveCollectionNames(item.collectionIds),
-  typeLabel: TYPE_LABELS[item.type],
+  typeLabel: ITEM_TYPE_META[item.type].label,
   updatedLabel: formatRelativeTime(item.updatedAt, now),
   copyText: copyTextFor(item),
 })

@@ -7,18 +7,26 @@ import { Boxes, ChevronRight, FolderPlus, PanelLeft, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
-import { collectionNav, primaryNav, typeNav } from '@/lib/dashboard-nav'
+import { ITEM_TYPE_META } from '@/lib/item-types'
+import { PRIMARY_NAV_ICONS } from '@/lib/nav-icons'
 import SidebarRow from './SidebarRow'
 import SidebarSection from './SidebarSection'
 import GitSyncPanel from './GitSyncPanel'
+import type { SidebarNav } from '@/types/dashboard'
 
 type Props = {
+  /**
+   * Derived on the server. This component must not import the nav lists
+   * itself — that would pull the vault, and eventually filesystem access,
+   * into the browser bundle.
+   */
+  nav: SidebarNav
   collapsed: boolean
   onToggle?: () => void
   onNavigate?: () => void
 }
 
-const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
+const SidebarContent = ({ nav, collapsed, onToggle, onNavigate }: Props) => {
   const pathname = usePathname()
   const [typesOpen, setTypesOpen] = useState(true)
   const [collectionsOpen, setCollectionsOpen] = useState(true)
@@ -86,8 +94,8 @@ const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
       <ScrollArea className="min-h-0 flex-1">
         <nav className={cn('space-y-4 px-3 pb-4', collapsed && 'px-2')}>
           <ul className="space-y-1">
-            {primaryNav.map((entry) => {
-              const Icon = entry.icon
+            {nav.primary.map((entry) => {
+              const Icon = PRIMARY_NAV_ICONS[entry.icon]
               return (
                 <li key={entry.id}>
                   <SidebarRow
@@ -111,8 +119,8 @@ const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
             onOpenChange={setTypesOpen}
           >
             <ul className="space-y-1">
-              {typeNav.map((type) => {
-                const Icon = type.icon
+              {nav.types.map((type) => {
+                const { icon: Icon, color } = ITEM_TYPE_META[type.id]
                 return (
                   <li key={type.id}>
                     <SidebarRow
@@ -122,7 +130,7 @@ const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
                       href={type.href}
                       active={pathname === type.href}
                       icon={<Icon className="size-4 shrink-0" />}
-                      iconColor={type.color}
+                      iconColor={color}
                       onNavigate={onNavigate}
                     />
                   </li>
@@ -138,7 +146,7 @@ const SidebarContent = ({ collapsed, onToggle, onNavigate }: Props) => {
             onOpenChange={setCollectionsOpen}
           >
             <ul className="space-y-1">
-              {collectionNav.map((collection) => (
+              {nav.collections.map((collection) => (
                 <li key={collection.id}>
                   <SidebarRow
                     label={collection.name}

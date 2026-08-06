@@ -32,3 +32,50 @@ export type DashboardCollection = Collection & {
    */
   dominantTypes: ItemTypeId[]
 }
+
+/*
+ * Sidebar navigation.
+ *
+ * These cross the server/client boundary as props, so every field has to be
+ * serializable — which is why nothing here holds a `LucideIcon`. A row names
+ * its icon and the client resolves it: type rows through `ITEM_TYPE_META`,
+ * primary rows through `PRIMARY_NAV_ICONS`.
+ */
+
+/** Icon keys for the nav rows that are not backed by an item type. */
+export type PrimaryNavIcon = 'dashboard' | 'favorites'
+
+export type PrimaryNavEntry = {
+  id: string
+  label: string
+  icon: PrimaryNavIcon
+  count: number
+  href?: string
+}
+
+export type CollectionNavEntry = {
+  id: string
+  name: string
+  color?: string
+  count: number
+  href: string
+}
+
+/** Icon and colour come from `ITEM_TYPE_META[id]`, so neither is carried. */
+export type TypeNavEntry = {
+  id: ItemTypeId
+  label: string
+  count: number
+  href: string
+}
+
+/**
+ * Every list the sidebar renders, in one prop. Threaded from the root layout
+ * (server) down through the client shell, so no client component has to reach
+ * into the vault for it.
+ */
+export type SidebarNav = {
+  primary: PrimaryNavEntry[]
+  types: TypeNavEntry[]
+  collections: CollectionNavEntry[]
+}

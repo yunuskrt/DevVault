@@ -2,7 +2,7 @@ import React from 'react'
 import { notFound } from 'next/navigation'
 import MainHeader from '@/components/dashboard/MainHeader'
 import ItemBrowser from '@/components/dashboard/ItemBrowser'
-import { getTypeNavEntry, typeNav } from '@/lib/dashboard-nav'
+import { getTypeNav, getTypeNavEntry } from '@/lib/dashboard-nav'
 import { getItemsByType } from '@/lib/dashboard-data'
 import { pluralize } from '@/lib/format'
 
@@ -11,7 +11,7 @@ type Props = {
 }
 
 export const generateStaticParams = () =>
-  typeNav.map((entry) => ({ type: entry.id }))
+  getTypeNav().map((entry) => ({ type: entry.id }))
 
 const ItemTypePage = async ({ params }: Props) => {
   const { type } = await params

@@ -1,18 +1,51 @@
-# Current Feature
+# Current Feature: Git Vault 2 — Sidebar Data Threading
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-Not Started
+In Progress
 
 ## Goals
 
 <!-- Goals & requirements -->
 
+- Break the `SidebarContent.tsx` (`'use client'`) → `dashboard-nav.ts` → `mock-data.ts` import chain, so filesystem reads never reach the browser when spec 3 lands.
+- Convert `dashboard-nav.ts`'s module-scope constants `primaryNav`, `collectionNav`, `typeNav` into `getPrimaryNav()`, `getCollectionNav()`, `getTypeNav()`, returning the same shapes and staying synchronous.
+- Keep `getTypeNavEntry(id)` working for `/items/[type]`'s 404 check and header label — pass the nav array in if that keeps the page simplest.
+- Add a single `SidebarNav` type in `src/types/dashboard.ts` carrying all three lists; thread one prop `layout.tsx` (server) → `DashboardShell` → `Sidebar` → `SidebarContent`.
+- Make everything crossing the client boundary serializable: pass icon **keys**, not `LucideIcon` components. Types resolve via `ITEM_TYPE_META`; `LayoutDashboard` and `Star` on the two primary rows need equivalent treatment.
+- Acceptance: grep proves `SidebarContent.tsx` no longer imports `dashboard-nav`, and no `'use client'` file reaches `mock-data.ts` through any chain. Record the grep in history so spec 3 can rely on it.
+
 ## Notes
 
 <!-- Any extra notes -->
+
+Spec: `context/features/git-vault-2-sidebar-data-spec.md` (2 of 7). Series
+overview: `context/features/git-vault-0-overview.md`. Design:
+`docs/git-vault-architecture.md` §1.1.
+
+**Pure refactor, zero behaviour change.** `mock-data.ts` still exists and is
+still the source at the end of this spec. Doing the prop-threading here keeps it
+out of spec 3's async conversion branch, and gives that branch an exact
+regression baseline. Nothing here is Git-related.
+
+Verification — every number is unchanged from today; any difference is a bug:
+
+1. Sidebar collections: React Patterns `#3b82f6`, AI Prompts `#a855f7`, DevOps & Commands `#f59553`, in that order, counts 2 / 2 / 4.
+2. Type rows: Snippet 3, Prompt 2, Note 2, Command 2, File 1, Image 1, URL 1 — each icon in its own colour, visually unchanged.
+3. Primary rows: Dashboard 12, Favorites 5.
+4. Collapsed rail still shows every row with tooltips intact.
+5. Mobile sheet renders the same nav as the desktop aside.
+6. `aria-current="page"` still lands on a collection route and on `/favorites`.
+7. Card counts across all routes match the overview spec's baseline.
+8. `npm run build` passes, `tsc --noEmit` clean, no hydration warnings.
+
+Out of scope: changing the data source (spec 3), making anything async, the
+inert Pinned/Recent sidebar rows, and `GitSyncPanel` (hardcoded until spec 4).
+
+The fiddly part is the icons — the type row and the two primary rows must look
+identical afterwards.
 
 ## History
 
