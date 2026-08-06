@@ -10,30 +10,40 @@ Ordered roadmap. Each numbered phase becomes one or more `/feature` specs in
 Replace `src/lib/mock-data.ts` with real reads from a vault on disk. This is the
 blocker for everything below it — search, CLI and AI all sit on top of it.
 
-**Build**
+**Researched and specced.** Architecture: `docs/git-vault-architecture.md`.
+Split into seven specs — see `features/git-vault-0-overview.md` for the series,
+the decisions taken and the shared regression baseline.
 
-- `src/lib/filesystem/` — vault path resolution, read/write, `.devvault/config.json`
-- `src/lib/markdown/` — frontmatter parse + serialize
-- `src/lib/git/` — `isomorphic-git`; add/commit/pull/push, status, conflict detection
-- Zod schemas at the boundary, matching the `Item` union in `src/types/vault.ts`
-- Wire `GitSyncPanel` to real branch/status instead of hardcoded `main` / `Synced` / `2m ago`
+| # | Spec | Delivers |
+| --- | --- | --- |
+| 1 | `features/git-vault-1-foundation-spec.md` | `lib/vault/`, `lib/filesystem/`, `lib/markdown/`, Zod, seed script |
+| 2 | `features/git-vault-2-sidebar-data-spec.md` | Nav data off the client bundle, into props |
+| 3 | `features/git-vault-3-read-model-spec.md` | App reads the vault; `mock-data.ts` deleted |
+| 4 | `features/git-vault-4-git-read-spec.md` | `lib/git/`, `GitService`, real `GitSyncPanel` |
+| 5 | `features/git-vault-5-write-commit-spec.md` | Server Actions that write; explicit commit |
+| 6 | `features/git-vault-6-sync-spec.md` | Fetch / pull / push behind one Sync button |
+| 7 | `features/git-vault-7-conflicts-spec.md` | Conflict resolution UI, vault-error surface |
 
-**Decide first — the file structure is the whole design**
+**Decided** (was "decide first" — all open questions are now answered):
 
-- Directory layout: the spec tree in `project-overview.md` groups by type
-  (`snippets/`, `notes/`, …). Confirm or change.
-- **Collection ↔ item is many-to-many.** `collectionIds[]` lives on the item and
-  should stay there (it travels in the item's own file, no index to merge-conflict).
-  But collections need their own home for name + description + `updatedAt`:
-  one `.md` per collection, or entries in `.devvault/config.json`?
-- Item `id` vs filename vs path — is the path the id, or is `id` in frontmatter?
-  Decide what happens on rename and on slug collision.
-- `pinned` / `favorite` / `createdAt` / `updatedAt` in frontmatter — yes?
-- Binary items (`image`, `file`): the asset plus a sidecar `.md` for metadata?
-- `vault-index.ts` builds its maps at module scope, valid only while data is
-  static. Move to request scope and decide cache invalidation on disk change.
-- Commit granularity: per save, or explicit "Commit changes" (see the drawer
-  footer in `screenshots/dashboard-ui-drawer.png`)?
+- **Engine: `simple-git`, not `isomorphic-git`.** It wraps the system `git`
+  binary, so SSH keys and credential helpers work and DevVault stores no
+  credentials. isomorphic-git has no SSH transport at all. Behind a `GitService`
+  interface so the engine is one file. This supersedes the tech-stack row in
+  `project-overview.md`; spec 4 corrects it.
+- **Vault location:** the `DEVVAULT_PATH` env var. Unset is a setup error.
+- **Layout:** type-grouped tree as in `project-overview.md`, plus
+  `collections/` and `.devvault/`. Nested folders allowed, and are not collections.
+- **Collections:** one `.md` per collection. `updatedAt` derived from member
+  items, not stored — storing it means every item save rewrites collection files.
+- **Item `id`:** a title slug in frontmatter, stable across later title edits,
+  `-2`/`-3` on collision. The path may go stale; the id may not.
+- **`pinned` / `favorite` / `createdAt` / `updatedAt`:** in frontmatter, yes.
+- **Binary items:** the asset plus a sidecar `<filename>.md`.
+- **`vault-index.ts`:** request-scoped via React `cache()`, `force-dynamic` on
+  every vault-reading route. No cross-request cache until profiling asks for one.
+- **Commit granularity:** write-through to disk, commit explicitly — the model
+  the drawer footer already shows. `autoCommit` available as an opt-in setting.
 
 ---
 
