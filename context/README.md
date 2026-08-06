@@ -6,6 +6,7 @@ These are the context files referenced by the `CLAUDE.md` file. Only the four ro
 - `coding-standards.md` - Code conventions, patterns and rules for the AI to follow
 - `ai-interaction.md` - Workflow and communication guidelines for working with the AI
 - `current-feature.md` - Living document tracking the feature currently being worked on
+- `todo.md` - Ordered roadmap of upcoming phases and open decisions (not auto-loaded)
 - `features/` - Feature spec files used with the `/feature` command
 - `fixes/` - Fix spec files for bugs and issues
 - `research/` - Research files used with the `/research` command to generate documentation
