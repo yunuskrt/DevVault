@@ -1,102 +1,18 @@
-# Current Feature: Git Vault 6 — Remote Synchronization
+# Current Feature
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-Spec: `context/features/git-vault-6-sync-spec.md` (spec 6 of 7). One **Sync**
-button that fetches, works out what state the repository is in, and pulls or
-pushes accordingly. This is what makes the vault usable from a second computer.
-
-- **Never call `git pull` blind.** Implement `sync()` in
-  `simple-git-service.ts` as fetch → inspect → decide (§5.6):
-  - `!tracking` → `{ kind: 'no-remote' }`
-  - `!ahead && !behind` → `{ kind: 'up-to-date' }`
-  - `behind && !ahead` → `merge --ff-only`, then `{ kind: 'pulled', commits }`
-  - `ahead && !behind` → `push`, then `{ kind: 'pushed', commits }`
-  - `ahead && behind` → diverged
-  The fast-forward case is isolated deliberately: it **cannot** conflict, and on
-  a single-user vault it is the overwhelmingly common one.
-- **Diverged → `git pull --rebase --autostash`.** Linear history rather than
-  merge commits littering a knowledge repo; `--autostash` covers the likely case
-  of uncommitted edits when Sync is pressed.
-- **Detect a rebase conflict and stop cleanly** — return
-  `{ kind: 'conflict', paths }`. Resolution is spec 7. Report the conflict, say
-  the vault is mid-rebase, and offer `git rebase --abort` as the way out. Never
-  leave the user in a state the UI cannot describe.
-- **First push.** A branch with no upstream needs `push -u origin <branch>`.
-  Detect it (`tracking` null but a remote exists) rather than letting a plain
-  push fail with a Git suggestion string. Distinguish "no remote configured at
-  all" from "remote exists, branch not tracked" — different messages, different
-  fixes.
-- **`syncVault` Server Action** in `src/actions/vault.ts`, returning
-  `{ success, data: SyncOutcome, error }`. Goes through spec 5's write queue —
-  a sync concurrent with a commit is exactly the `index.lock` collision the
-  queue exists for. `revalidatePath('/', 'layout')` after any outcome that
-  changed the working tree.
-- **The Sync button becomes real** in `GitSyncPanel`. `useTransition` for
-  pending, spinner state from §7.1. Outcome → UI per §7.3: `up-to-date` toast
-  "Already up to date"; `pulled` "Pulled N changes"; `pushed` "Pushed N
-  commits"; `synced` both counts; `no-remote` "No remote configured";
-  **`conflict` gets no toast** — it routes to the conflict state (spec 7);
-  error toasts the mapped message and the panel enters its error state.
-- **Sync is not optimistic** (§7.5). A push that "succeeded" in the UI and
-  failed on disk is the lie that makes a sync tool untrustworthy.
-- **Startup state check.** Detect a vault left mid-operation by a previous
-  session (`.git/MERGE_HEAD`, `.git/REBASE_HEAD`) and surface it, rather than
-  letting the next Sync fail confusingly. Uncommitted changes at startup are
-  normal; a half-finished rebase is not.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-**Verification** — set up a second clone of the seeded vault as the "other
-computer" and drive real states, not simulated ones:
-
-1. Both in sync → "Already up to date", no commits created.
-2. Commit + push in the other clone → Sync pulls, the item appears, count right.
-3. Commit locally → Sync pushes, the other clone sees it.
-4. Commit on both sides, different files → clean rebase, `git log --graph` has
-   no merge commit, both changes present.
-5. Commit on both sides **to the same item** → `conflict`, panel shows the
-   conflict state, vault is in a describable state, `git rebase --abort`
-   recovers.
-6. Uncommitted local edits during a pull → `--autostash` restores them; verify
-   the edits are actually still there.
-7. No remote → correct message, no crash.
-8. Remote unreachable (bad URL or offline) → mapped error, no hang beyond the
-   timeout, **no credential leakage in the message**.
-9. Fresh branch with no upstream → first push sets it.
-10. Sync and commit fired concurrently → both complete, no `index.lock` error.
-11. `npm run build` passes, `tsc --noEmit` clean.
-
-**Out of scope:** resolving conflicts (spec 7 — detecting and reporting them is
-in scope); clone / init / remote configuration UI (`devvault init` is todo phase
-4, so the vault is set up by hand in a terminal); branch switching, multi-remote,
-multi-vault (phase 6); background or scheduled auto-sync — Sync is user-initiated.
-
-**Starting state.** `GitStatus` already carries `tracking`, `ahead` and `behind`,
-and `SyncOutcome` is already declared in `src/lib/git/types.ts` with all six
-members — spec 4 defined the shape so this spec fills it in rather than inventing
-it. `sync()` currently throws; `resolve()` stays throwing for spec 7. The panel's
-`Sync` control is display-only text and renders only when `git.canSync`.
-
-**Things spec 4 and 5 left for this one.** `AUTH_FAILED` and `TIMEOUT` are so far
-only pattern-tested against real Git stderr strings, never provoked — they need a
-remote, which this spec finally has. `redactCredentials` exists in
-`src/lib/git/errors.ts` and verification item 8 is where it earns its keep.
-
-**Constraints carried from the series.** Never surface raw stderr, stack traces,
-repository paths or credentials to the browser. Git conflicts are never resolved
-silently. Every module in `src/lib/git/` is `server-only`, and
-`client-boundary.test.ts` enforces that no client component reaches one.
 
 ## History
 
@@ -1477,3 +1393,166 @@ Known gaps and follow-ups:
   `MainHeader`'s search is still `readOnly`, a collection's `description` still
   renders nowhere on its own page, the vault-error surface is still only a
   server log (spec 7), and there is still no lint script or ESLint config.
+
+### Git Vault 6 — Remote Synchronization — 2026-08-07
+
+One **Sync** button that fetches, works out what state the repository is in,
+and pulls or pushes accordingly. Spec 6 of 7
+(`context/features/git-vault-6-sync-spec.md`). This is the feature the whole
+project exists for — it is what makes the vault usable from a second computer.
+No new dependencies.
+
+**`sync()` is fetch, inspect, then decide (§5.6)** — never a blind `git pull`.
+The whole sequence is *one* queued unit rather than a queued command per step:
+between the fetch and the merge, a concurrent commit would change `ahead` out
+from under the decision just made on it, and the branch taken would no longer
+match the repository it is applied to.
+
+The fast-forward case is isolated deliberately because it **cannot conflict**,
+and on a single-user vault it is the overwhelmingly common sync. Diverged
+histories take `pull --rebase --autostash`: a vault is one person's notes on two
+machines, so replaying local commits on top gives linear history instead of
+merge commits littering a knowledge repo.
+
+**`GitService` gained `remotes()`.** `status.tracking` is null both when no
+remote exists and when one exists but the branch has never been pushed — §5.5
+needs those apart, because the first is a setup gap and the second is a
+`push -u` away. `GitStatusResult` carries `hasRemote` and `operation` alongside
+the status.
+
+**Three things the spec asked for turned out to be wrong, and running it is what
+showed that.** None would have been caught by writing to the spec's letter:
+
+1. **§9.7's marker is unsafe.** It names `.git/REBASE_HEAD`, but that is a *ref*
+   pointing at the commit being replayed, not a statement that anything is in
+   progress. Git's own `git status` reads the `rebase-merge/` and
+   `rebase-apply/` **directories**, and so does `repo-state.ts`. Verified
+   against Git 2.39.3 by probing every state: a rebase or merge that completes
+   cleanly leaves no marker at all, a conflicted rebase leaves `REBASE_HEAD` +
+   `rebase-merge/`, a conflicted merge leaves `MERGE_HEAD`. Keying on
+   `REBASE_HEAD` risks stranding the panel in a paused state no Sync can clear.
+   A mutation that switches to it is caught by a test.
+
+2. **`git pull --rebase --autostash` exits 0 with conflicts in your files.**
+   When the stashed edits cannot be reapplied, Git prints "Applying autostash
+   resulted in conflicts", leaves `UU` entries in the working tree, **and
+   returns success**. A `try`/`catch` alone — the obvious implementation —
+   would have reported a clean sync over a vault full of conflict markers,
+   which is exactly the §7.5 lie the feature exists to prevent. The same trap
+   sits on the `merge --ff-only` path with `merge.autoStash`. Both paths now
+   inspect the working tree after the command rather than trusting its exit
+   code.
+
+3. **"The ff-only case cannot conflict" is true of the *merge*, not of the
+   *restore*.** The isolation is still worth having; the claim needed narrowing,
+   and the comment says so.
+
+**`merge.autoStash=true` had to be added to the ff-only path.** §5.6's
+`--autostash` is on the rebase path only, so without it Git refuses the
+fast-forward outright ("Your local changes would be overwritten") whenever the
+uncommitted edit touches a file the incoming commits also changed — which is
+verification item 6 exactly.
+
+**Two bugs the browser caught that the tests did not:**
+
+- Mid-rebase the panel read **"1 file in conflict on HEAD"**. Git checks out a
+  detached HEAD for the duration of a rebase and reports the branch as the
+  literal string `HEAD` — not the empty string the `|| 'detached HEAD'`
+  fallback was written for. The paused description now names no branch at all,
+  since the only name available there is the one the user did not start from.
+- A fresh branch read **"Branch scratch has no remote"** when a remote existed.
+  That is precisely the distinction §5.5 asks for, and `canSync` had it while
+  the *description* did not — half-met. There is now a separate "Not pushed"
+  state. The same click reported **"Pushed 12 commits"** for one note, because
+  the first-push count fell back to the branch's whole history; it now measures
+  against every remote ref (`--not --remotes=<remote>`), so a branch cut from an
+  already-pushed `main` reports the one commit the remote actually lacks.
+
+Decisions taken at `/feature start`:
+
+- **Describe the conflict, do not offer an Abort control** (user's call). The
+  panel enters a persistent `Rebase paused` state naming the conflicted files
+  and `git rebase --abort`, in the tooltip *and* in `sr-only` text so nothing is
+  hover-only. Spec 7 replaces the whole state anyway.
+- **Verify against a scratch vault** (user's call). `~/devvault` was never
+  touched: a throwaway vault was seeded, `DEVVAULT_PATH` pointed at it, and
+  `.env.local` restored afterwards. Confirmed unchanged — still two commits and
+  no remote.
+
+**A conflict must not be a toast** (§7.3), and the mechanism matters: `conflict`
+is returned as **data** with `success: true`, because `SyncButton` only reaches
+the silent branch through `result.success`. Mapping it to `success: false` would
+produce an error toast and no route — the opposite of the spec. `no-remote` is
+data for the same reason. Both are pinned by tests.
+
+`toGitPanelState` gained a `paused` state above conflicts in the precedence
+chain, because a conflicted file *inside* a rebase needs different advice than
+one on its own: committing is unavailable until the rebase ends, and the abort
+undoes the whole sync. `canSync` is now `operation === null && (tracking !==
+null || hasRemote)` — suspended, Sync is refused outright, so the control is
+hidden rather than offered and then rejected.
+
+**Verification.** All eleven items driven against real repositories with a bare
+remote and a second clone acting as the other computer — up-to-date, pull,
+push, clean rebase (no merge commit in `git log --graph`), a genuine same-item
+conflict with `git rebase --abort` recovering to the exact pre-sync commit,
+uncommitted edits surviving both pull paths, no remote, an unreachable remote,
+first push setting the upstream, and Sync + Commit fired in the same tick. The
+last produced "Pulled 1 change" and "Committed 1 file" with no `.git/index.lock`
+left behind. Playwright reported **zero console errors and zero warnings**, and
+the Next dev log's last error predates verification by 52 minutes. The token in
+the unreachable remote's URL appears in neither the toast, the HTML, the RSC
+payload nor the server log.
+
+**Testing.** 451 tests across 29 files, up from 398 across 27. Three new files:
+`git/sync.test.ts` (22), `git/repo-state.test.ts` (10) and seven `syncVault`
+cases added to `actions/vault.test.ts`. The service tests run against genuine
+repositories with a real bare upstream rather than a mocked engine, because
+every interesting question here is one Git owns.
+
+**35 mutations applied, 33 caught** — but only after three tests were
+strengthened. The `synced` outcome was tested at 1 pulled and 1 pushed, where
+swapping the fields passes; the auth-before-unreachable ordering used a string
+that matched only one pattern, so reordering could not fail it; and the
+`conflicted` disjunct in the rebase `catch` had no case of its own until a test
+was built for a working tree already holding `UU` entries, where `git pull`
+refuses outright. That is the sixth feature running in which a green mutation
+run would have banked a worthless test.
+
+The two survivors are recorded rather than papered over. `operation === 'rebase'`
+in the `catch` has no test that fails without it — every way `pull --rebase` is
+known to stop leaves conflicts too, and a rebase that skips an identical commit
+does not stop at all (checked, not assumed). It is kept because dropping it
+means a *toast* on a suspended vault, which §7.3 rules out; a comment at the
+site says exactly this.
+
+**`/feature test` deleted code rather than adding a test for it.** A mutation
+removing `syncVault`'s explicit `checkRepository` guard changed nothing: a
+non-repository already fails at sync's first Git call and `toGitError`
+classifies it to the identical §7.6 sentence. The guard and its now-dead
+`checkRepository` call are gone — three subprocesses removed from every sync for
+a byte-identical outcome — and two imports died with it, which `tsc` does not
+flag and no lint script exists to catch.
+
+Known gaps and follow-ups:
+
+- **Resolving conflicts is spec 7.** This spec detects and reports them; the
+  only way out of a suspended rebase is a terminal, by design.
+- The `no-remote` toast is unreachable in steady state, since `canSync` is false
+  with no remote and the button does not render. It stays reachable by racing —
+  remove the remote in a terminal, then click — so it is a live safety net
+  rather than dead code.
+- **`AUTH_FAILED` is still pattern-tested rather than provoked.** The
+  unreachable case is now driven for real, but a genuine credential rejection
+  needs a remote that authenticates, which no local bare repository does.
+- `sync` refuses to run while suspended rather than offering `rebase --continue`;
+  continuing without resolution would fail anyway.
+- Nothing recomputes status without a navigation, so a page sitting idle goes
+  stale. The chokidar watcher (§6.4) is spec 7 if wanted at all.
+- `resolve` is the last `GitService` method still throwing.
+- Carried forward untouched: the sidebar's Pinned and Recent rows are still
+  inert `div`s, the sidebar's "Recent" count still means `items.length`,
+  `MainHeader`'s search is still `readOnly`, a collection's `description` still
+  renders nowhere on its own page, item CRUD UI is still phase 2b, the
+  vault-error surface is still only a server log, and there is still no lint
+  script or ESLint config.
