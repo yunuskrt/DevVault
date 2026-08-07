@@ -1,6 +1,6 @@
 /**
- * Collection ordering. Sibling of `item-sort.ts` and kept free of any
- * `mock-data` import for the same reason: client components pull it in.
+ * Collection ordering. Sibling of `item-sort.ts` and kept free of any vault
+ * import for the same reason: client components pull it in.
  *
  * Note `count` — a collection's item count is derived by filtering `items`,
  * not stored on `Collection`, so the sortable shape is `DashboardCollection`.
@@ -9,6 +9,8 @@
 import { byTextAsc, byUpdatedAtDesc } from '@/lib/sort-utils'
 
 type SortableCollection = {
+  /** Only ever read as `byUpdatedAtDesc`'s tie-break, never sorted on alone. */
+  id: string
   name: string
   updatedAt: string
   count: number

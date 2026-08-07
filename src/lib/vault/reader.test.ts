@@ -11,7 +11,10 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
 } from '@/lib/markdown/frontmatter'
-import { collections as mockCollections, items as mockItems } from '@/lib/mock-data'
+import {
+  collections as seedCollections,
+  items as seedItems,
+} from '../../../scripts/seed-data'
 import { readVault } from '@/lib/vault/reader'
 import type { Collection } from '@/types/vault'
 
@@ -21,7 +24,7 @@ const createSeededVault = async (): Promise<string> => {
   return root
 }
 
-/** `readVault` returns files in path order; the mock arrays are in their own. */
+/** `readVault` returns files in path order; the seed arrays are in their own. */
 const byId = <T extends { id: string }>(records: readonly T[]): T[] =>
   [...records].sort((a, b) => a.id.localeCompare(b.id))
 
@@ -47,19 +50,19 @@ describe('readVault over a freshly seeded vault', () => {
     expect(result.collections).toHaveLength(6)
   })
 
-  it('returns exactly the items mock-data exports', () => {
-    expect(byId(result.items)).toEqual(byId(mockItems))
+  it('returns exactly the items the seed data describes', () => {
+    expect(byId(result.items)).toEqual(byId(seedItems))
   })
 
-  it('returns the collections mock-data exports, apart from updatedAt', () => {
+  it('returns the collections the seed data describes, apart from updatedAt', () => {
     expect(byId(result.collections).map(withoutUpdatedAt)).toEqual(
-      byId(mockCollections).map(withoutUpdatedAt),
+      byId(seedCollections).map(withoutUpdatedAt),
     )
   })
 
   it('derives collection updatedAt as the newest member item', () => {
     const newestMember = (collectionId: string) =>
-      mockItems
+      seedItems
         .filter(item => item.collectionIds.includes(collectionId))
         .map(item => item.updatedAt)
         .sort()
@@ -77,6 +80,42 @@ describe('readVault over a freshly seeded vault', () => {
     const stats = await fs.stat(path.join(root, 'collections/resources-links.md'))
 
     expect(empty?.updatedAt).toBe(stats.mtime.toISOString())
+  })
+
+  /*
+   * The mtime fallback above is only useful if seeding stamps it. Writing every
+   * file "now" made the empty collection read as the most recently updated
+   * thing in the vault, which put it in the sidebar's top three and pushed a
+   * real collection out. The test above would pass either way — this is the one
+   * that pins the date to what the seed data actually describes.
+   */
+  it('stamps each collection file mtime so the seeded dates survive', async () => {
+    const empty = result.collections.find(c => c.id === 'resources-links')
+    const seeded = seedCollections.find(c => c.id === 'resources-links')
+
+    // Compared as instants: an mtime round-trips through `toISOString()` and
+    // carries milliseconds the seed literal does not spell out.
+    expect(Date.parse(empty?.updatedAt ?? '')).toBe(
+      Date.parse(seeded?.updatedAt ?? ''),
+    )
+
+    // And it must not be the most recent collection in the vault.
+    const newest = [...result.collections].sort((a, b) =>
+      Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
+    )[0]
+    expect(newest.id).not.toBe('resources-links')
+  })
+
+  /*
+   * A collection sharing its newest item with another collection derives the
+   * same `updatedAt` as that other one. This tie is live in the seeded vault
+   * and is what `byUpdatedAtDesc`'s id tie-break exists to resolve.
+   */
+  it('derives an equal updatedAt for two collections sharing their newest member', async () => {
+    const dateOf = (id: string) =>
+      result.collections.find(c => c.id === id)?.updatedAt
+
+    expect(dateOf('context-files')).toBe(dateOf('devops-commands'))
   })
 
   it('round-trips every seeded file byte for byte', async () => {

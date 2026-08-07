@@ -6,8 +6,11 @@ import { pluralize } from '@/lib/format'
 
 type Props = {}
 
-const FavoritesPage = ({}: Props) => {
-  const favoriteItems = getFavoriteItems()
+/** Reads the vault, so it can never be a build-time snapshot. */
+export const dynamic = 'force-dynamic'
+
+const FavoritesPage = async ({}: Props) => {
+  const favoriteItems = await getFavoriteItems()
 
   return (
     <>

@@ -12,7 +12,10 @@ import {
 
 type Props = {}
 
-const Home = ({}: Props) => {
+/** Reads the vault, so it can never be a build-time snapshot. */
+export const dynamic = 'force-dynamic'
+
+const Home = async ({}: Props) => {
   const now = Date.now()
 
   return (
@@ -22,11 +25,11 @@ const Home = ({}: Props) => {
         subtitle="Your developer knowledge, versioned"
       />
       <div className="flex flex-col gap-8 p-6">
-        <StatCards stats={getDashboardStats()} />
-        <RecentCollections collections={getRecentCollections(now)} />
+        <StatCards stats={await getDashboardStats()} />
+        <RecentCollections collections={await getRecentCollections(now)} />
         <DashboardItemSections
-          pinnedItems={getPinnedItems(now)}
-          recentItems={getRecentItems(now)}
+          pinnedItems={await getPinnedItems(now)}
+          recentItems={await getRecentItems(now)}
         />
       </div>
     </>

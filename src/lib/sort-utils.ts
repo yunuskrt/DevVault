@@ -5,8 +5,21 @@
  * bundle by depending on it.
  */
 
-export const byUpdatedAtDesc = <T extends { updatedAt: string }>(a: T, b: T) =>
-  new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+/**
+ * Newest first, ties broken by `id`.
+ *
+ * The tie-break is not decoration. A collection's `updatedAt` is derived from
+ * its newest member, so two collections sharing an item share that item's date
+ * whenever it is the newest in both — which is live in the current vault. Left
+ * to a stable sort, the winner would be whichever the vault happened to read
+ * first, so renaming a file could reorder the sidebar.
+ */
+export const byUpdatedAtDesc = <T extends { updatedAt: string; id: string }>(
+  a: T,
+  b: T,
+) =>
+  new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime() ||
+  a.id.localeCompare(b.id, 'en')
 
 /**
  * Fixed locale so the ordering does not shift with the runtime's default, and
