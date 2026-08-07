@@ -1,169 +1,18 @@
-# Current Feature: Git Vault 4 — Git Service, Read Only
+# Current Feature
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-Spec: `context/features/git-vault-4-git-read-spec.md` (4 of 7). Introduce
-`src/lib/git/` and make `GitSyncPanel` tell the truth. Read-only: `status`,
-`log` and a few `config` reads. No commit, push or pull — nothing in the user's
-repository can be damaged by a bug in this spec.
-
-- **Add `simple-git`.** Pure JS spawning a subprocess, so no
-  `serverExternalPackages` entry should be needed — add one and record why only
-  if Turbopack mis-bundles it (§6.3).
-- **`src/lib/git/types.ts` — the seam.** `GitStatus`, `GitCommit`, `SyncOutcome`
-  and the `GitService` interface exactly as in §4.3. **No `simple-git` import in
-  this file.** Implement only `status()` and `log()`; declare `stage`, `commit`,
-  `sync`, `fileAtRevision`, `discard` and `resolve` on the interface anyway so
-  specs 5–7 do not each invent their own shape.
-- **`src/lib/git/simple-git-service.ts`** — `import 'server-only'` at the top.
-  One instance per vault root via
-  `simpleGit({ baseDir: root, timeout: { block: 20_000 }, config: [] })`, with
-  `GIT_TERMINAL_PROMPT=0` in the spawn environment (§5.9).
-  - `status()` — one `git.status()` call mapped to `GitStatus`.
-  - `log({ path?, limit? })` — drives the panel's last-commit timestamp and,
-    later, item history. Use `--follow` when a path is given (§3.2 lets paths
-    change).
-  - Repository preflight, run once and cached for the process: `git --version`
-    present, `checkIsRepo()` true, `user.name` and `user.email` configured. A
-    vault directory that is **not** a Git repository is a normal state — spec
-    1's seed script does not `git init` — and must be reported, not crashed on.
-- **`src/lib/git/errors.ts`** — map engine failures to a typed union, then to
-  the user-facing strings in §7.6. Never let raw stderr reach the browser, and
-  redact credentials out of remote URLs (`https://user:token@host/…`) before
-  anything is logged or displayed. Cases that matter here: git not installed,
-  not a repository, identity not configured, stale `index.lock`, timeout.
-- **`GitSyncPanel`** — replace the hardcoded `main` / `Synced` /
-  `Last push 2m ago` with the §7.1 states: clean-and-synced, uncommitted, ahead,
-  behind, diverged, conflict, no-remote, plus a not-a-repo state this spec adds.
-  - Status arrives as a **prop from the server `layout.tsx`** — extend
-    `SidebarNav` or add a sibling prop. `GitSyncPanel` renders inside
-    `SidebarContent`, a client component; do not fetch from the client.
-  - The collapsed rail needs an equivalent one-icon summary per state, and its
-    `sr-only` text must describe the real state rather than the hardcoded
-    "Branch main, synced".
-  - The `Sync` control stays **display-only**. Spec 6 wires it.
-  - Recompute on navigation and after mutations. **Do not poll on a timer.**
-- **Correct the stale engine reference:** `context/project-overview.md` tech
-  stack table, Git row, currently reads `isomorphic-git / Git`. Leave
-  `current-feature.md` history entries alone — they record what was true when
-  written.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-### Why `simple-git`
-
-§2.2–2.5. It wraps the system `git` binary, so SSH keys, `osxkeychain`,
-`gh auth` and any configured `credential.helper` work untouched and **DevVault
-stores no credentials at all**. `isomorphic-git` has no SSH transport whatsoever
-and would require the app to own a token store.
-
-### Shapes from §4.3
-
-```ts
-export type GitStatus = {
-  branch: string
-  tracking: string | null      // 'origin/main' | null
-  ahead: number
-  behind: number
-  staged: string[]
-  modified: string[]
-  created: string[]
-  deleted: string[]
-  conflicted: string[]
-  isClean: boolean
-}
-
-export type SyncOutcome =
-  | { kind: 'up-to-date' }
-  | { kind: 'pulled';   commits: number }
-  | { kind: 'pushed';   commits: number }
-  | { kind: 'synced';   pulled: number; pushed: number }
-  | { kind: 'conflict'; paths: string[] }
-  | { kind: 'no-remote' }
-```
-
-`GitCommit` is referenced by §4.3 but never defined in the architecture doc —
-its shape is this spec's call (hash, message, author, ISO date at minimum).
-
-### Panel states (§7.1)
-
-| State | Condition | Render |
-| --- | --- | --- |
-| Clean & synced | `isClean && !ahead && !behind` | ✅ `Synced` |
-| Uncommitted | `!isClean` | ● `3 uncommitted` |
-| Ahead | `ahead > 0` | ↑ `2 to push` |
-| Behind | `behind > 0` | ↓ `1 to pull` |
-| Diverged | both | ⇅ `2↑ 1↓` |
-| Conflict | `conflicted.length` | ⚠ `2 conflicts` |
-| No remote | `!tracking` | ○ `Local only` |
-
-Plus **not a repository**, which this spec adds. `Syncing` and `Error` rows in
-the table belong to spec 6 — there is no action to be pending on here.
-
-`Last push 2m ago` needs a real source: `git log -1 --format=%cI <upstream>`, or
-just the last local commit time.
-
-### User-facing error strings (§7.6)
-
-| Internal | User-facing |
-| --- | --- |
-| `git: command not found` | "Git is not installed. Install Git and restart DevVault." |
-| `user.email not set` | "Git needs your name and email. Run `git config --global user.email …`" |
-| `Authentication failed` | "Could not authenticate with the remote. Check your Git credentials." |
-| `index.lock exists` | "Another Git operation is in progress. Try again in a moment." |
-
-### Verification
-
-Exercise real repository states against the seeded vault:
-
-1. `git init` the vault, no commits: uncommitted/untracked state, right count.
-2. Commit everything: clean, branch name correct, last-commit time correct and
-   relative.
-3. No remote configured: `Local only`.
-4. Add a remote, push manually from a terminal, then commit locally without
-   pushing: ahead by 1.
-5. Commit on the remote and `git fetch` from a terminal: behind by 1.
-6. Both: diverged.
-7. Point `DEVVAULT_PATH` at a plain directory that is not a repository: the
-   panel says so and the app still renders every item.
-8. Temporarily unset `user.email`: the message names the fix, and nothing leaks
-   a stack trace to the browser.
-9. Collapse the rail: state still distinguishable, `sr-only` text accurate.
-10. Card counts across all routes unchanged from the baseline — this spec reads
-    Git, not the vault, and must not disturb item rendering.
-11. `npm run build` passes, `tsc --noEmit` clean.
-
-### Out of scope
-
-- Any operation that writes: stage, commit, push, pull, merge — specs 5 and 6.
-- The Sync button doing anything.
-- Conflict resolution UI — spec 7. Detecting the conflict *state* for the panel
-  is in scope; acting on it is not.
-- Per-item history UI — todo phase 6.
-
-### Carried context
-
-- `context/todo.md` already records `simple-git` as the decision (it names
-  `isomorphic-git` only as the rejected option), so `project-overview.md:163` is
-  the only stale reference left to correct.
-- Spec 2 built the server→client nav threading this panel's prop rides on, and
-  `client-boundary.test.ts` walks the import graph on every `npm test` — a
-  `simple-git` import reaching a `'use client'` file will fail the suite.
-- Spec 3 made every route `force-dynamic` with `loadVault` behind React
-  `cache()`; status should follow the same request-scoped pattern rather than
-  caching across requests.
-- `GitSyncPanel` is currently a pure presentational component with a single
-  `collapsed: boolean` prop — no state, no data.
 
 ## History
 
@@ -1202,3 +1051,171 @@ Known gaps and follow-ups:
   renders nowhere on its own page, `GitSyncPanel` is still hardcoded until
   spec 4, the display-only controls still give no feedback on click, and there
   is still no lint script or ESLint config.
+
+### Git Vault 4 — Git Service, Read Only — 2026-08-07
+
+Introduced `src/lib/git/` and made `GitSyncPanel` tell the truth. Spec 4 of 7
+(`context/features/git-vault-4-git-read-spec.md`). Read-only by design: this
+spec runs `status`, `log` and a few `config` reads and nothing else, so no bug
+in it can damage a user's repository — which is what made it the right place to
+get the engine, the error mapping and the subprocess plumbing wrong a few times
+first. Dependency added: `simple-git` 3.36.0. No `serverExternalPackages` entry
+proved necessary; Turbopack bundles it fine.
+
+**`types.ts` is the seam and imports no engine.** `GitStatus`, `GitCommit`,
+`SyncOutcome`, `GitStatusResult`, `GitErrorCode` and the `GitService`
+interface. Only `status()` and `log()` are implemented; `stage`, `commit`,
+`sync`, `fileAtRevision`, `discard` and `resolve` are declared and throw, so
+specs 5–7 fill in a shape that already exists instead of each inventing one. A
+no-op would have been the dangerous shape — a caller would believe it had
+committed — and a test pins that they throw.
+
+**`GitStatus` carries an `untracked` field beyond §4.3.** Without it the §4.3
+shape cannot express the state verification step 1 asks for: straight after
+`git init` every file is untracked and every other array is empty, so the panel
+would have reported "0 uncommitted" while reporting itself dirty. It reads 20
+against the seeded vault, matching `git status --porcelain -u` exactly.
+`GitCommit` was referenced by §4.3 but never defined anywhere in the
+architecture doc; it is `hash` / `message` / `author` / `date`, with `date`
+ISO 8601 from `%cI` so it feeds `formatRelativeTime` directly. The engine's own
+default log format is neither ISO nor committer date.
+
+**The §5.9 environment recipe does not work, and failed loudly.**
+`simpleGit(…).env({ ...process.env, GIT_TERMINAL_PROMPT: '0' })` — the spec's
+literal instruction — fails before Git ever runs. `@simple-git/argv-parser`
+scans any *explicitly supplied* environment and refuses to spawn if it holds
+`GIT_EDITOR`, `GIT_SSH_COMMAND`, `GIT_ASKPASS`, `GIT_PAGER`, `GIT_CONFIG_*` or
+similar without the matching `unsafe` flag. Spreading `process.env` copies
+whatever the user exported, so on a machine with `GIT_EDITOR` set this returned
+"Use of GIT_EDITOR is not permitted" and the panel read **"Git missing" with
+Git installed and working**.
+
+The fix is to set `GIT_TERMINAL_PROMPT` on our own process and pass no explicit
+environment, so `spawn` inherits the parent's. Filtering the flagged names was
+the alternative and is worse: users legitimately set `GIT_SSH_COMMAND` to
+select a key, so stripping it would break authentication for exactly the people
+§2.2 chose this engine to accommodate. A regression test sets `GIT_EDITOR` and
+asserts the binary is still found; restoring the `.env()` call fails 14 of the
+service's 17 tests.
+
+**`errors.ts` is the whole user-facing error surface.** Engine failures are
+classified by pattern against real Git stderr — there is no structured code to
+branch on — then mapped to the §7.6 sentences. Anything unmatched falls through
+to `GIT_FAILED`, which is what keeps stderr out of the browser. `redactCredentials`
+strips userinfo from any URL, deliberately including a bare `user@` since a
+token is as often carried as the username alone (`https://ghp_xxx@github.com/…`)
+and nothing in the string distinguishes the two; scp-style `git@host:path` has
+no scheme and is correctly left alone.
+
+**`loadGitStatus` never throws for a Git reason.** Every failure is a state the
+panel has to *render* — no Git, no repository, no identity — so it returns a
+result union instead. Only `VaultError` propagates, and `layout.tsx` already
+turns that into the setup screen. It is request-scoped via React `cache()`,
+matching `loadVault`.
+
+**Preflight is split rather than process-cached** (user's call, contradicting
+the spec's "run once and cached for the process"). `git --version` is genuinely
+process-stable and cached forever; `checkIsRepo()` and the two identity reads
+run per request. The spec's own verification steps 1 and 8 change exactly those
+two states while the app runs, and a process cache would have needed a restart
+to see either. Confirmed live: `git init` on the vault showed up on reload.
+
+**`git-panel.ts` is the §7.1 table as one pure function.** It lives beside
+`dashboard-mappers.ts` rather than inside `lib/git/` so the rule "every module
+in `lib/git/` is server-only" stays true without exception, and so the table is
+testable with a literal. The §7.1 conditions overlap freely — a branch can be
+dirty *and* ahead *and* behind — so it is read as an ordered list: conflict >
+uncommitted > diverged > ahead > behind > local-only > synced. Tests pin that
+order, since reordering the chain would silently change what a real repository
+reports mid-merge. The uncommitted count dedupes through a `Set`, because a
+file staged and then modified again appears in two arrays.
+
+Decisions taken at `/feature start`:
+
+- **Short label plus tooltip** (user's call) for the error text. The §7.6
+  sentences are full sentences and the footer is 256px, so the panel shows
+  `Setup needed` / `No repository` and the tooltip and `sr-only` text carry the
+  fix. Nothing is hover-only.
+- **Sibling `git` prop, not a field on `SidebarNav`** (user's call). `SidebarNav`
+  is documented as every *list* the sidebar renders; Git state is neither a list
+  nor navigation, and keeping them apart means a failing Git read cannot take
+  the nav with it. Threaded `layout.tsx` → `DashboardShell` → `Sidebar` →
+  `SidebarContent`, the path spec 2 built.
+
+`GIT_PANEL_ICONS` joined `PRIMARY_NAV_ICONS` in `nav-icons.ts` — both exist for
+the identical reason, that a `LucideIcon` cannot cross the boundary as a prop —
+and `Record<GitPanelIcon, LucideIcon>` makes the coupling compiler-enforced both
+ways. `client-boundary.test.ts` now polices seven `server-only` roots; zero of
+the client components reach any of them.
+
+**Verification.** All eleven items were exercised against real repository
+states, not simulated: not-a-repo → `git init` (20 uncommitted) → identity
+unset → commit (clean) → remote added and pushed (Synced) → ahead 1 → behind 1
+→ diverged → a genuine merge conflict, using a local bare repository as the
+remote. Card counts held at the recorded baseline (21 / 5 / 6 / 2 / 4 / 3 / 0 /
+3 / 2 / 1 / 1) throughout, including mid-conflict with conflict markers sitting
+in a vault file. Playwright confirmed the collapsed rail carries a distinct
+per-state icon with accurate `sr-only` text — no longer the hardcoded "Branch
+main, synced" — the tooltip resolving, and **zero console errors or warnings**.
+Nothing leaked a path or a stack trace in the identity-unset state.
+
+One wording slip was caught and fixed on the way: "1 file in conflict … Resolve
+**them** before committing."
+
+**Testing.** 241 tests across 18 files, up from 174 across 14. Four new files:
+`git-panel.test.ts` (21), `git/errors.test.ts` (22),
+`git/simple-git-service.test.ts` (17) and `git/index.test.ts` (7). The service
+tests run against genuine repositories in temp directories rather than a mocked
+engine — including a bare repo as a real upstream, so ahead/behind is real ref
+counting, and an actual merge conflict — because the point of this spec *is*
+the subprocess plumbing, and a double exercises none of it.
+
+Fourteen mutations were applied and all were caught: dropping `untracked` from
+the count, summing lengths instead of deduping, removing either precedence
+branch, removing the detached-HEAD and null-tracking fallbacks, weakening the
+redaction regex to require a colon, removing the `%cI` override, dropping the
+`not_added` mapping, unsetting `GIT_TERMINAL_PROMPT`, removing the no-commits
+branch, dropping the log path filter, hardcoding the identity check, swapping
+the preflight order, and adding an unreachable icon. **One test was weaker than
+it looked** — the `--follow` rename case passed with the path filter removed
+entirely, because that repository had only two commits; an unrelated third
+commit now makes it distinguish all three behaviours. That is the third time in
+this series a green run would have banked a worthless test.
+
+`context/project-overview.md`'s tech-stack row was corrected from
+`isomorphic-git / Git` to `simple-git`. `context/todo.md` needed no change — it
+already records `simple-git` as the decision and names `isomorphic-git` only as
+the rejected option.
+
+The vault at `~/devvault` is now a Git repository with a single `Seed vault`
+commit and no remote; it was not a repository before, and verification step 1
+required initialising it.
+
+Known gaps and follow-ups:
+
+- **The `cache()` dedupe has no unit test and cannot have one** — outside a
+  React request `cache()` falls through to the raw function, so the test would
+  pass whether the wrapper existed or not. Verified against a running server
+  instead, and the test file says so.
+- **`AUTH_FAILED`, `INDEX_LOCKED` and `TIMEOUT` are pattern-tested, not
+  provoked.** Their classification is asserted against real Git output strings,
+  but no test causes an actual auth failure or stale lock — `status` never takes
+  the index lock, and `commit`/`sync` land in specs 5 and 6. Those specs are
+  where these paths first run for real.
+- The `Sync` control is still display-only, and now renders only when a branch
+  is tracked. Spec 6 wires it.
+- Nothing recomputes status without a navigation. `force-dynamic` means every
+  navigation re-reads, which satisfies "recompute on navigation and after
+  mutations", but a page sitting idle goes stale — the chokidar watcher (§6.4)
+  is spec 7 if wanted at all.
+- `git --version` is cached for the process, so uninstalling Git under a running
+  server goes unnoticed. Deliberate, and the only thing that survives a request.
+- The vault-error surface from spec 3 is still only a server log, and the Git
+  panel does not surface it either — spec 7.
+- No coverage tooling is installed, so coverage is reasoned about per module
+  rather than measured.
+- Carried forward untouched: the sidebar's Pinned and Recent rows are still
+  inert `div`s, the sidebar's "Recent" count still means `items.length`,
+  `MainHeader`'s search is still `readOnly`, a collection's `description` still
+  renders nowhere on its own page, the display-only controls still give no
+  feedback on click, and there is still no lint script or ESLint config.
