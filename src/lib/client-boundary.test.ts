@@ -19,13 +19,18 @@ import { describe, expect, it } from 'vitest'
 
 const SRC = path.resolve(import.meta.dirname, '..')
 
-/** Modules that read the vault, directly or otherwise. No client file may reach these. */
+/**
+ * Modules that touch the filesystem or spawn Git, directly or otherwise. No
+ * client file may reach these.
+ */
 const SERVER_ONLY_ROOTS = [
   'src/lib/vault/index.ts',
   'src/lib/vault/reader.ts',
   'src/lib/vault/config.ts',
   'src/lib/filesystem/read-write.ts',
   'src/lib/filesystem/walk.ts',
+  'src/lib/git/index.ts',
+  'src/lib/git/simple-git-service.ts',
 ]
 
 const sourceFiles = (): string[] => {

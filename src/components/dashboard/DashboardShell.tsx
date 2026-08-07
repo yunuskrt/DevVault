@@ -6,15 +6,17 @@ import { Button } from '@/components/ui/button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import Sidebar from './Sidebar'
 import MainArea from './MainArea'
-import type { SidebarNav } from '@/types/dashboard'
+import type { GitPanelState, SidebarNav } from '@/types/dashboard'
 
 type Props = {
   /** Derived on the server by the root layout and threaded down to the nav. */
   nav: SidebarNav
+  /** Likewise, for the sidebar's Git sync panel. */
+  git: GitPanelState
   children: React.ReactNode
 }
 
-const DashboardShell = ({ nav, children }: Props) => {
+const DashboardShell = ({ nav, git, children }: Props) => {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -23,6 +25,7 @@ const DashboardShell = ({ nav, children }: Props) => {
       <div className="flex h-dvh overflow-hidden">
         <Sidebar
           nav={nav}
+          git={git}
           collapsed={collapsed}
           mobileOpen={mobileOpen}
           onToggle={() => setCollapsed((value) => !value)}
