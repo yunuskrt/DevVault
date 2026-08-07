@@ -27,6 +27,17 @@ export type GitStatus = {
    * every file is untracked, and none of the other arrays holds one.
    */
   untracked: string[]
+  /**
+   * Renames, likewise beyond §4.3 and likewise load-bearing. Git reports a
+   * rename as its own porcelain status (`R  from -> to`) and the engine parses
+   * it into neither `staged` nor `created` nor `deleted` — so without this
+   * field a vault whose only change was a renamed item reads as `isClean:
+   * false` with every array empty, and the panel offers to commit "0 files".
+   *
+   * §3.2 makes this ordinary rather than exotic: editing an item's title
+   * renames its file.
+   */
+  renamed: { from: string; to: string }[]
   isClean: boolean
 }
 
@@ -51,9 +62,13 @@ export type SyncOutcome =
   | { kind: 'no-remote' }
 
 /**
- * Only `status` and `log` are implemented in this spec. The rest are declared
- * now so specs 5–7 fill in a shape that already exists rather than each
- * inventing its own; every unimplemented method throws until then.
+ * `sync` and `resolve` remain unimplemented until specs 6 and 7; both throw.
+ * They stay declared so those specs fill in a shape that already exists rather
+ * than each inventing its own.
+ *
+ * Every method that touches the index — everything except `status`, `log` and
+ * `fileAtRevision` — is serialized through the write queue by the
+ * implementation (§5.9). Callers do not queue for themselves.
  */
 export interface GitService {
   status(): Promise<GitStatus>
@@ -64,6 +79,22 @@ export interface GitService {
   fileAtRevision(path: string, hash: string): Promise<string>
   discard(paths: string[]): Promise<void>
   resolve(path: string, side: 'ours' | 'theirs'): Promise<void>
+  /**
+   * `git rm` — drops the file from disk *and* the index in one step (§5.4),
+   * rather than `fs.unlink` followed by a stage.
+   *
+   * Throws `UNTRACKED_PATH` when Git does not track the file, which is a
+   * routine state for an item created but never committed. The caller falls
+   * back to a plain filesystem delete.
+   */
+  remove(paths: string[]): Promise<void>
+  /**
+   * `git mv` — moves the file and records the rename, so `log --follow` keeps
+   * the item's history across a title edit (§3.2).
+   *
+   * Throws `UNTRACKED_PATH` on an untracked source, same as `remove`.
+   */
+  move(from: string, to: string): Promise<void>
 }
 
 /**
@@ -90,5 +121,13 @@ export type GitErrorCode =
   | 'TIMEOUT'
   /** The remote rejected the credentials. */
   | 'AUTH_FAILED'
+  /**
+   * `rm` or `mv` was asked about a file Git does not track. Not a user-facing
+   * failure — an item written but never committed is exactly this — so the
+   * caller falls back to the filesystem rather than surfacing it.
+   */
+  | 'UNTRACKED_PATH'
+  /** Nothing was staged, so there was nothing to commit. */
+  | 'NOTHING_TO_COMMIT'
   /** Anything else the engine reported. */
   | 'GIT_FAILED'

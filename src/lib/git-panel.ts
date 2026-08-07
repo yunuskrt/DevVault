@@ -12,24 +12,41 @@
 
 import { formatRelativeTime, pluralize } from '@/lib/format'
 import type { GitErrorCode, GitStatus, GitStatusResult } from '@/lib/git/types'
+import { isVaultManagedPath } from '@/lib/vault/layout'
 import type { GitPanelState } from '@/types/dashboard'
 
 /**
- * How many files are uncommitted.
+ * How many files the Commit button would actually commit.
  *
  * A `Set` because the arrays overlap: a file that is staged *and* modified
  * since staging appears in both, and counting the arrays' lengths would report
  * it twice. Untracked files are included — on a freshly initialised vault they
  * are the only thing there is.
+ *
+ * A rename contributes its destination only, matching the single line
+ * `git status` prints for it: the user moved one item, not two. Without it a
+ * vault whose only pending change was a renamed item would read "0
+ * uncommitted" while `isClean` said otherwise, since the engine files renames
+ * in none of the other arrays.
+ *
+ * **`isVaultManagedPath` is the important filter, and it has to be the same one
+ * `commitAll` uses.** The vault is the user's own repository and may hold
+ * anything else they keep in it — a `.DS_Store`, a scratch file, a whole
+ * unrelated directory. §5.4 forbids committing those, so counting them
+ * produced a button offering to commit "1 file" that then reported nothing to
+ * commit. The count and the action have to describe the same set.
  */
 const changedFileCount = (status: GitStatus): number =>
-  new Set([
-    ...status.staged,
-    ...status.modified,
-    ...status.created,
-    ...status.deleted,
-    ...status.untracked,
-  ]).size
+  new Set(
+    [
+      ...status.staged,
+      ...status.modified,
+      ...status.created,
+      ...status.deleted,
+      ...status.untracked,
+      ...status.renamed.map((rename) => rename.to),
+    ].filter(isVaultManagedPath),
+  ).size
 
 /**
  * The terse label each failure gets. Keyed by `GitErrorCode` rather than
@@ -42,6 +59,12 @@ const FAILURE_SUMMARY: Record<GitErrorCode, string> = {
   INDEX_LOCKED: 'Git busy',
   TIMEOUT: 'Git timed out',
   AUTH_FAILED: 'Auth failed',
+  // Neither of these can actually reach the panel — `loadGitStatus` only ever
+  // runs `status` and `log`, and both codes come from `rm`/`mv`/`commit`. The
+  // `Record` is total so that adding a code forces a decision here rather than
+  // rendering `undefined`, so they get honest labels rather than a cast.
+  UNTRACKED_PATH: 'Untracked',
+  NOTHING_TO_COMMIT: 'Nothing to commit',
   GIT_FAILED: 'Git error',
 }
 
@@ -88,8 +111,17 @@ export const toGitPanelState = (
     }
   }
 
-  if (!status.isClean) {
-    const count = changedFileCount(status)
+  /*
+   * `!isClean` is deliberately *not* the condition here. Git reports the whole
+   * repository dirty, including files DevVault does not manage — a vault whose
+   * only change is a stray `.DS_Store` is dirty to Git and has nothing to
+   * commit as far as DevVault is concerned. Keying on the count instead means
+   * the button appears exactly when it has work to do, and the panel falls
+   * through to the states below when it does not.
+   */
+  const count = changedFileCount(status)
+
+  if (count > 0) {
     return {
       ...base,
       icon: 'uncommitted',

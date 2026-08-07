@@ -108,22 +108,39 @@ const valueImports = (source: string, from: string): string[] => {
 type Graph = {
   edges: Map<string, string[]>
   clients: string[]
+  serverActions: Set<string>
 }
 
 const buildGraph = (): Graph => {
   const edges = new Map<string, string[]>()
   const clients: string[] = []
+  const serverActions = new Set<string>()
 
   for (const file of sourceFiles()) {
     const source = fs.readFileSync(path.join(path.dirname(SRC), file), 'utf8')
     if (/^\s*['"]use client['"]/.test(source)) clients.push(file)
+    if (/^\s*['"]use server['"]/.test(source)) serverActions.add(file)
     edges.set(file, valueImports(source, file))
   }
 
-  return { edges, clients }
+  return { edges, clients, serverActions }
 }
 
-/** The first chain from `start` to `target`, or undefined. Used for the failure message. */
+/**
+ * The first chain from `start` to `target`, or undefined. Used for the failure
+ * message.
+ *
+ * **Traversal stops at a `'use server'` file.** That directive is a real
+ * boundary, not a convention: the client never receives the module, only a
+ * `createServerReference("<id>")` stub that calls it over the network, so
+ * whatever the action imports stays on the server. Verified in the built
+ * bundle — `.next/static/` contains that stub and no occurrence of
+ * `DEVVAULT_PATH`, `simpleGit` or `index.lock`.
+ *
+ * Without this, a client component calling any Server Action would look like a
+ * boundary violation, which would leave the only way to satisfy this suite
+ * being not to have Server Actions at all.
+ */
 const findChain = (
   graph: Graph,
   start: string,
@@ -138,6 +155,11 @@ const findChain = (
     if (node === target) return chain
     if (seen.has(node)) continue
     seen.add(node)
+
+    // The chain may *reach* an action file — that import is legitimate — but
+    // nothing beyond it is bundled, so it is a leaf.
+    if (node !== start && graph.serverActions.has(node)) continue
+
     for (const next of graph.edges.get(node) ?? []) {
       queue.push([...chain, next])
     }
@@ -176,6 +198,42 @@ describe('client/server boundary', () => {
       .map((chain) => chain.join('\n    -> '))
 
     expect(offenders).toEqual([])
+  })
+
+  /*
+   * The tests above stop traversing at a `'use server'` file, so the whole
+   * suite would go quietly vacuous if that directive were ever dropped from
+   * the actions module — every chain through it would become unreachable for
+   * the opposite reason. These two make the directive itself the thing under
+   * test.
+   */
+  it('the actions module declares the boundary the walker relies on', () => {
+    expect(graph.serverActions).toContain('src/actions/vault.ts')
+  })
+
+  it('a client component reaches the vault only through a Server Action', () => {
+    // `CommitButton` calls `commitChanges`, which reaches `simple-git-service`.
+    // The chain is legitimate exactly because it passes through the boundary,
+    // and this pins the shape rather than trusting the absence of a failure.
+    expect(
+      findChain(
+        graph,
+        'src/components/dashboard/CommitButton.tsx',
+        'src/actions/vault.ts',
+      ),
+    ).toEqual([
+      'src/components/dashboard/CommitButton.tsx',
+      'src/actions/vault.ts',
+    ])
+
+    const withoutBoundary = { ...graph, serverActions: new Set<string>() }
+    expect(
+      findChain(
+        withoutBoundary,
+        'src/components/dashboard/CommitButton.tsx',
+        'src/lib/git/simple-git-service.ts',
+      ),
+    ).toBeDefined()
   })
 
   it('the sidebar takes its nav as a prop rather than importing it', () => {
