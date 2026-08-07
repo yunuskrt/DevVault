@@ -3,16 +3,13 @@
  *
  * These are functions rather than module-scope constants because the sidebar
  * is a client component: the data has to be produced on the server and handed
- * down as props, never imported across the boundary. They are synchronous
- * while the vault is static; reading it from disk makes them async.
+ * down as props, never imported across the boundary. They are async because
+ * the vault is read from disk — `loadVault` dedupes within a request, so the
+ * layout and the page share one read.
  */
 
-import { items, itemTypes } from '@/lib/mock-data'
-import { getDominantTypeColor } from '@/lib/item-types'
-import {
-  getItemsInCollection,
-  topCollectionsByRecency,
-} from '@/lib/vault-index'
+import { ITEM_TYPE_IDS, ITEM_TYPE_META, getDominantTypeColor } from '@/lib/item-types'
+import { loadVault, loadVaultIndex, topCollectionsByRecency } from '@/lib/vault'
 import type {
   CollectionNavEntry,
   PrimaryNavEntry,
@@ -22,26 +19,34 @@ import type {
 /** How many collections the sidebar lists before "View all collections". */
 export const SIDEBAR_COLLECTION_LIMIT = 3
 
-export const getPrimaryNav = (): PrimaryNavEntry[] => [
-  {
-    id: 'all',
-    label: 'Dashboard',
-    icon: 'dashboard',
-    count: items.length,
-    href: '/',
-  },
-  {
-    id: 'favorites',
-    label: 'Favorites',
-    icon: 'favorites',
-    count: items.filter((item) => item.favorite).length,
-    href: '/favorites',
-  },
-]
+export const getPrimaryNav = async (): Promise<PrimaryNavEntry[]> => {
+  const { items } = await loadVault()
 
-export const getCollectionNav = (): CollectionNavEntry[] =>
-  topCollectionsByRecency(SIDEBAR_COLLECTION_LIMIT).map((collection) => {
-    const collectionItems = getItemsInCollection(collection.id)
+  return [
+    {
+      id: 'all',
+      label: 'Dashboard',
+      icon: 'dashboard',
+      count: items.length,
+      href: '/',
+    },
+    {
+      id: 'favorites',
+      label: 'Favorites',
+      icon: 'favorites',
+      count: items.filter((item) => item.favorite).length,
+      href: '/favorites',
+    },
+  ]
+}
+
+export const getCollectionNav = async (): Promise<CollectionNavEntry[]> => {
+  const collections = await topCollectionsByRecency(SIDEBAR_COLLECTION_LIMIT)
+  const { itemsByCollection } = await loadVaultIndex()
+
+  return collections.map((collection) => {
+    const collectionItems = itemsByCollection.get(collection.id) ?? []
+
     return {
       id: collection.id,
       name: collection.name,
@@ -50,18 +55,25 @@ export const getCollectionNav = (): CollectionNavEntry[] =>
       href: `/collections/${collection.id}`,
     }
   })
+}
 
-export const getTypeNav = (): TypeNavEntry[] =>
-  itemTypes.map((type) => ({
-    id: type.id,
-    label: type.label,
-    count: items.filter((item) => item.type === type.id).length,
-    href: `/items/${type.id}`,
+export const getTypeNav = async (): Promise<TypeNavEntry[]> => {
+  const { items } = await loadVault()
+
+  return ITEM_TYPE_IDS.map((id) => ({
+    id,
+    label: ITEM_TYPE_META[id].label,
+    count: items.filter((item) => item.type === id).length,
+    href: `/items/${id}`,
   }))
+}
 
 /**
  * Self-contained rather than taking the nav array, so `/items/[type]` stays a
- * single call for its 404 check and its header.
+ * single call for its 404 check and its header. The second `getTypeNav()` this
+ * costs the page is free: both resolve against the same cached vault read.
  */
-export const getTypeNavEntry = (id: string): TypeNavEntry | undefined =>
-  getTypeNav().find((entry) => entry.id === id)
+export const getTypeNavEntry = async (
+  id: string,
+): Promise<TypeNavEntry | undefined> =>
+  (await getTypeNav()).find((entry) => entry.id === id)

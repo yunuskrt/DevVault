@@ -2,19 +2,27 @@
  * Vault types in, presentation types out. Nothing here reads the vault or
  * decides which records to show — that is `dashboard-data.ts`, which imports
  * this module and must never be imported back.
+ *
+ * Every lookup a mapper needs is handed to it, which is why this module stayed
+ * synchronous when the vault moved to disk: it holds no reference to where the
+ * data came from.
  */
 
 import { formatRelativeTime } from '@/lib/format'
 import { ITEM_TYPE_META, getDominantTypes } from '@/lib/item-types'
-import { findCollection, getItemsInCollection } from '@/lib/vault-index'
 import type {
   DashboardCollection,
   DashboardItem,
 } from '@/types/dashboard'
 import type { Collection, Item } from '@/types/vault'
 
-const resolveCollectionNames = (ids: string[]) =>
-  ids.map((id) => findCollection(id)?.name).filter((name) => name !== undefined)
+const resolveCollectionNames = (
+  ids: string[],
+  collectionsById: ReadonlyMap<string, Collection>,
+) =>
+  ids
+    .map((id) => collectionsById.get(id)?.name)
+    .filter((name) => name !== undefined)
 
 /**
  * Each type stores its payload in a different field, so the union is matched
@@ -37,9 +45,13 @@ const copyTextFor = (item: Item): string => {
   }
 }
 
-export const toDashboardItem = (item: Item, now: number): DashboardItem => ({
+export const toDashboardItem = (
+  item: Item,
+  now: number,
+  collectionsById: ReadonlyMap<string, Collection>,
+): DashboardItem => ({
   ...item,
-  collectionNames: resolveCollectionNames(item.collectionIds),
+  collectionNames: resolveCollectionNames(item.collectionIds, collectionsById),
   typeLabel: ITEM_TYPE_META[item.type].label,
   updatedLabel: formatRelativeTime(item.updatedAt, now),
   copyText: copyTextFor(item),
@@ -48,13 +60,10 @@ export const toDashboardItem = (item: Item, now: number): DashboardItem => ({
 export const toDashboardCollection = (
   collection: Collection,
   now: number,
-): DashboardCollection => {
-  const collectionItems = getItemsInCollection(collection.id)
-
-  return {
-    ...collection,
-    count: collectionItems.length,
-    updatedLabel: formatRelativeTime(collection.updatedAt, now),
-    dominantTypes: getDominantTypes(collectionItems),
-  }
-}
+  collectionItems: readonly Item[],
+): DashboardCollection => ({
+  ...collection,
+  count: collectionItems.length,
+  updatedLabel: formatRelativeTime(collection.updatedAt, now),
+  dominantTypes: getDominantTypes(collectionItems),
+})

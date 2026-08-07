@@ -1,12 +1,15 @@
 /**
- * Item ordering, kept free of any `mock-data` import so client components can
- * pull it in without dragging the whole vault into the browser bundle.
+ * Item ordering, kept free of any vault import so client components can pull it
+ * in. `lib/vault/` is `server-only`, so reaching it from here would turn every
+ * client component that sorts into a build error.
  */
 
 import { byTextAsc, byUpdatedAtDesc } from '@/lib/sort-utils'
 
 /** The minimum an item needs to be sortable; `DashboardItem` satisfies it. */
 type SortableItem = {
+  /** Only ever read as `byUpdatedAtDesc`'s tie-break, never sorted on alone. */
+  id: string
   title: string
   updatedAt: string
   pinned: boolean

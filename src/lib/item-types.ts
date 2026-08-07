@@ -33,6 +33,24 @@ export const ITEM_TYPE_META: Record<ItemTypeId, ItemTypeMeta> = {
 }
 
 /**
+ * The seven built-in types, in the order the sidebar lists them.
+ *
+ * This is the app's fixed vocabulary rather than vault data — it does not come
+ * off disk, which is why it lives here now that `mock-data.ts` is gone. The
+ * order is its own fact: it is neither `ITEM_TYPE_META`'s key order nor
+ * `TYPE_PRIORITY`'s, both of which put `command` before `note`.
+ */
+export const ITEM_TYPE_IDS: readonly ItemTypeId[] = [
+  'snippet',
+  'prompt',
+  'note',
+  'command',
+  'file',
+  'image',
+  'url',
+]
+
+/**
  * A type's colour, or `undefined` for no type at all. The optional parameter
  * is the point: both callers index into a possibly empty list of dominant
  * types, and the muted dot on an empty collection depends on getting

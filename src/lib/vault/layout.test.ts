@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { itemTypes } from '@/lib/mock-data'
+import { ITEM_TYPE_IDS } from '@/lib/item-types'
 import {
   COLLECTIONS_DIR,
   TYPE_DIRECTORIES,
@@ -14,8 +14,8 @@ describe('TYPE_DIRECTORIES', () => {
   it('names a directory for every declared item type', () => {
     // Drift guard: a new item type must be given a home here, or its files land
     // in a directory the reader does not recognise as an item directory at all.
-    for (const type of itemTypes) {
-      expect(TYPE_DIRECTORIES[type.id], `${type.id} has no directory`).toBeTruthy()
+    for (const type of ITEM_TYPE_IDS) {
+      expect(TYPE_DIRECTORIES[type], `${type} has no directory`).toBeTruthy()
     }
   })
 
@@ -89,10 +89,8 @@ describe('itemFilePath', () => {
     // The invariant the reader enforces: a file's directory is derived from its
     // type, so reading the directory back must return the type it was written
     // from. A disagreement is a vault error, never a silent move.
-    for (const type of itemTypes) {
-      expect(typeForPath(itemFilePath(type.id, 'some-id', 'asset.bin'))).toBe(
-        type.id,
-      )
+    for (const type of ITEM_TYPE_IDS) {
+      expect(typeForPath(itemFilePath(type, 'some-id', 'asset.bin'))).toBe(type)
     }
   })
 })

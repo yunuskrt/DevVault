@@ -7,10 +7,11 @@ import { describe, expect, it } from 'vitest'
  * The server/client boundary, enforced mechanically.
  *
  * `coding-standards.md` forbids filesystem and Git access reaching the
- * browser. Today the vault is a static array, so a client component importing
- * it is merely wasteful; once `mock-data.ts` becomes a filesystem read, the
- * same import is a build failure. This suite fails at the commit that
- * introduces such an import rather than at the one that makes the vault real.
+ * browser. The vault is now a filesystem read, so a client component that
+ * reaches it is a build failure rather than merely wasteful — these roots all
+ * begin with `import 'server-only'`, which is what turns the import into an
+ * error. This suite names the offending chain instead of leaving someone to
+ * read a bundler stack trace.
  *
  * Next.js already rejects a non-serializable *prop* at build time. What it
  * cannot see is an import chain, which is what these tests walk.
@@ -19,7 +20,13 @@ import { describe, expect, it } from 'vitest'
 const SRC = path.resolve(import.meta.dirname, '..')
 
 /** Modules that read the vault, directly or otherwise. No client file may reach these. */
-const SERVER_ONLY_ROOTS = ['src/lib/mock-data.ts']
+const SERVER_ONLY_ROOTS = [
+  'src/lib/vault/index.ts',
+  'src/lib/vault/reader.ts',
+  'src/lib/vault/config.ts',
+  'src/lib/filesystem/read-write.ts',
+  'src/lib/filesystem/walk.ts',
+]
 
 const sourceFiles = (): string[] => {
   const out: string[] = []
@@ -148,11 +155,12 @@ describe('client/server boundary', () => {
     // Proves the walker can see through a multi-hop chain, so a "no path
     // found" result below means something.
     expect(
-      findChain(graph, 'src/app/layout.tsx', 'src/lib/mock-data.ts'),
+      findChain(graph, 'src/app/layout.tsx', 'src/lib/vault/reader.ts'),
     ).toEqual([
       'src/app/layout.tsx',
       'src/lib/dashboard-nav.ts',
-      'src/lib/mock-data.ts',
+      'src/lib/vault/index.ts',
+      'src/lib/vault/reader.ts',
     ])
   })
 

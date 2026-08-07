@@ -1,14 +1,16 @@
-import type { Collection, Item, ItemType } from '@/types/vault'
+/**
+ * The 12 items and 6 collections `npm run seed` writes into a fresh vault.
+ *
+ * This was `src/lib/mock-data.ts` until the app started reading the vault off
+ * disk. It lives outside `src/` now because nothing in the application may
+ * import it: the app has exactly one source of truth, and it is the vault.
+ * Seed data is an input *to* that vault, not an alternative to it.
+ *
+ * Every verification baseline in `context/current-feature.md` is stated over
+ * these records, so the test suite reads them from here too.
+ */
 
-export const itemTypes: ItemType[] = [
-  { id: 'snippet', label: 'Snippet' },
-  { id: 'prompt', label: 'Prompt' },
-  { id: 'note', label: 'Note' },
-  { id: 'command', label: 'Command' },
-  { id: 'file', label: 'File' },
-  { id: 'image', label: 'Image' },
-  { id: 'url', label: 'URL' },
-]
+import type { Collection, Item } from '@/types/vault'
 
 export const collections: Collection[] = [
   {
@@ -33,7 +35,11 @@ export const collections: Collection[] = [
     id: 'context-files',
     name: 'Context Files',
     description: 'Configs and diagrams to hand to an assistant.',
-    updatedAt: '2026-06-30T14:20:00Z',
+    // Matches its newest member (`docker-networking-notes`), which it shares
+    // with `devops-commands`. The reader derives this field rather than reading
+    // it, so a stale value here is invisible until something sorts on it —
+    // which is how it drifted 16 days out of date in the first place.
+    updatedAt: '2026-07-16T10:15:00Z',
   },
   {
     id: 'devops-commands',

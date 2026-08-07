@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { seedVault } from '../../scripts/seed-vault'
 import {
   SIDEBAR_COLLECTION_LIMIT,
   getCollectionNav,
@@ -7,60 +12,87 @@ import {
   getTypeNav,
   getTypeNavEntry,
 } from '@/lib/dashboard-nav'
-import { ITEM_TYPE_META } from '@/lib/item-types'
+import { ITEM_TYPE_IDS, ITEM_TYPE_META } from '@/lib/item-types'
 import { PRIMARY_NAV_ICONS } from '@/lib/nav-icons'
-import { collections, items, itemTypes } from '@/lib/mock-data'
+import { readVault } from '@/lib/vault/reader'
 import type { SidebarNav } from '@/types/dashboard'
+import type { Collection, Item } from '@/types/vault'
 
-const nav = (): SidebarNav => ({
-  primary: getPrimaryNav(),
-  types: getTypeNav(),
-  collections: getCollectionNav(),
+/*
+ * The nav getters read `$DEVVAULT_PATH` off disk, so the suite seeds a throwaway
+ * vault and points the environment at it. Expectations are computed from a
+ * direct `readVault` of the same directory rather than from `scripts/seed-data`:
+ * a collection's `updatedAt` is derived on read, so the seed arrays are not
+ * authoritative about the order the sidebar lists collections in.
+ */
+
+let root: string
+let vault: { items: Item[]; collections: Collection[] }
+const originalPath = process.env.DEVVAULT_PATH
+
+beforeAll(async () => {
+  root = await fs.mkdtemp(path.join(os.tmpdir(), 'devvault-nav-'))
+  await seedVault(root)
+  process.env.DEVVAULT_PATH = root
+  vault = await readVault(root)
+})
+
+afterAll(async () => {
+  process.env.DEVVAULT_PATH = originalPath
+  await fs.rm(root, { recursive: true, force: true })
+})
+
+const nav = async (): Promise<SidebarNav> => ({
+  primary: await getPrimaryNav(),
+  types: await getTypeNav(),
+  collections: await getCollectionNav(),
 })
 
 describe('getPrimaryNav', () => {
-  it('counts every item and every favorite', () => {
-    const [dashboard, favorites] = getPrimaryNav()
+  it('counts every item and every favorite', async () => {
+    const [dashboard, favorites] = await getPrimaryNav()
 
     expect(dashboard).toMatchObject({ id: 'all', label: 'Dashboard', href: '/' })
-    expect(dashboard.count).toBe(items.length)
+    expect(dashboard.count).toBe(vault.items.length)
     expect(favorites).toMatchObject({
       id: 'favorites',
       label: 'Favorites',
       href: '/favorites',
     })
-    expect(favorites.count).toBe(items.filter((item) => item.favorite).length)
+    expect(favorites.count).toBe(
+      vault.items.filter((item) => item.favorite).length,
+    )
   })
 
-  it('names an icon the client can resolve', () => {
-    for (const entry of getPrimaryNav()) {
+  it('names an icon the client can resolve', async () => {
+    for (const entry of await getPrimaryNav()) {
       expect(PRIMARY_NAV_ICONS[entry.icon]).toBeTypeOf('object')
     }
   })
 })
 
 describe('getTypeNav', () => {
-  it('lists every item type in declaration order', () => {
-    expect(getTypeNav().map((entry) => entry.id)).toEqual(
-      itemTypes.map((type) => type.id),
-    )
+  it('lists every item type in declaration order', async () => {
+    expect((await getTypeNav()).map((entry) => entry.id)).toEqual([
+      ...ITEM_TYPE_IDS,
+    ])
   })
 
-  it('counts each type and accounts for every item', () => {
-    const entries = getTypeNav()
+  it('counts each type and accounts for every item', async () => {
+    const entries = await getTypeNav()
 
     for (const entry of entries) {
       expect(entry.count).toBe(
-        items.filter((item) => item.type === entry.id).length,
+        vault.items.filter((item) => item.type === entry.id).length,
       )
     }
 
     const total = entries.reduce((sum, entry) => sum + entry.count, 0)
-    expect(total).toBe(items.length)
+    expect(total).toBe(vault.items.length)
   })
 
-  it('builds the route each row links to', () => {
-    for (const entry of getTypeNav()) {
+  it('builds the route each row links to', async () => {
+    for (const entry of await getTypeNav()) {
       expect(entry.href).toBe(`/items/${entry.id}`)
     }
   })
@@ -70,31 +102,51 @@ describe('getTypeNav', () => {
    * ITEM_TYPE_META in the client, so every id has to be a key of it — that
    * lookup is what keeps the rendered row identical.
    */
-  it('yields ids that ITEM_TYPE_META can resolve', () => {
-    for (const entry of getTypeNav()) {
+  it('yields ids that ITEM_TYPE_META can resolve', async () => {
+    for (const entry of await getTypeNav()) {
       expect(ITEM_TYPE_META[entry.id]).toBeDefined()
+    }
+  })
+
+  /*
+   * The type list is the app's own vocabulary, not vault data: an empty vault
+   * still has seven types, all reading zero. Regressing this to "the types the
+   * vault happens to contain" would make the sidebar shrink as items are
+   * deleted.
+   */
+  it('lists all seven types even for a vault with no items', async () => {
+    const empty = await fs.mkdtemp(path.join(os.tmpdir(), 'devvault-none-'))
+    process.env.DEVVAULT_PATH = empty
+
+    try {
+      const entries = await getTypeNav()
+      expect(entries).toHaveLength(ITEM_TYPE_IDS.length)
+      expect(entries.every((entry) => entry.count === 0)).toBe(true)
+    } finally {
+      process.env.DEVVAULT_PATH = root
+      await fs.rm(empty, { recursive: true, force: true })
     }
   })
 })
 
 describe('getTypeNavEntry', () => {
-  it('finds a real type', () => {
-    expect(getTypeNavEntry('snippet')).toEqual(
-      getTypeNav().find((entry) => entry.id === 'snippet'),
+  it('finds a real type', async () => {
+    expect(await getTypeNavEntry('snippet')).toEqual(
+      (await getTypeNav()).find((entry) => entry.id === 'snippet'),
     )
   })
 
-  it('returns undefined for an unknown type, which is the 404 on /items/[type]', () => {
-    expect(getTypeNavEntry('nope')).toBeUndefined()
-    expect(getTypeNavEntry('')).toBeUndefined()
-    expect(getTypeNavEntry('Snippet')).toBeUndefined()
+  it('returns undefined for an unknown type, which is the 404 on /items/[type]', async () => {
+    expect(await getTypeNavEntry('nope')).toBeUndefined()
+    expect(await getTypeNavEntry('')).toBeUndefined()
+    expect(await getTypeNavEntry('Snippet')).toBeUndefined()
   })
 })
 
 describe('getCollectionNav', () => {
-  it('caps the list at the three most recently updated collections', () => {
-    const entries = getCollectionNav()
-    const expected = [...collections]
+  it('caps the list at the three most recently updated collections', async () => {
+    const entries = await getCollectionNav()
+    const expected = [...vault.collections]
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
       .slice(0, SIDEBAR_COLLECTION_LIMIT)
 
@@ -104,19 +156,20 @@ describe('getCollectionNav', () => {
     )
   })
 
-  it('counts the items filed in each collection and links to its page', () => {
-    for (const entry of getCollectionNav()) {
+  it('counts the items filed in each collection and links to its page', async () => {
+    for (const entry of await getCollectionNav()) {
       expect(entry.count).toBe(
-        items.filter((item) => item.collectionIds.includes(entry.id)).length,
+        vault.items.filter((item) => item.collectionIds.includes(entry.id))
+          .length,
       )
       expect(entry.href).toBe(`/collections/${entry.id}`)
     }
   })
 
-  it('takes its dot colour from the collection’s dominant type', () => {
+  it('takes its dot colour from the collection’s dominant type', async () => {
     const colors = Object.values(ITEM_TYPE_META).map((meta) => meta.color)
 
-    for (const entry of getCollectionNav()) {
+    for (const entry of await getCollectionNav()) {
       // undefined is legitimate: an empty collection has no dominant type.
       if (entry.color !== undefined) expect(colors).toContain(entry.color)
     }
@@ -128,8 +181,8 @@ describe('the nav as a whole', () => {
    * The reason these became functions. Next.js rejects a non-serializable
    * prop at build time; this catches it in a unit run, and says which field.
    */
-  it('is serializable, so it can cross into the client as a prop', () => {
-    const value = nav()
+  it('is serializable, so it can cross into the client as a prop', async () => {
+    const value = await nav()
 
     expect(JSON.parse(JSON.stringify(value))).toEqual(value)
 
@@ -147,27 +200,14 @@ describe('the nav as a whole', () => {
    * They used to be shared module-scope constants. Now that every call builds
    * a fresh list, a caller sorting or splicing one must not affect the next.
    */
-  it('hands out a fresh list on every call', () => {
-    const first = getTypeNav()
+  it('hands out a fresh list on every call', async () => {
+    const first = await getTypeNav()
     const before = first.length
 
     first.reverse()
     first.pop()
 
-    expect(getTypeNav()).toHaveLength(before)
-    expect(getTypeNav()[0].id).toBe(itemTypes[0].id)
-  })
-})
-
-/*
- * Guards a live duplication: the sidebar and the type page take their label
- * from itemTypes, while cards take theirs from ITEM_TYPE_META. Whichever ends
- * up owning it, the two must not drift while both exist.
- */
-describe('item type labels', () => {
-  it('agree between the vault and the presentation map', () => {
-    for (const type of itemTypes) {
-      expect(ITEM_TYPE_META[type.id].label).toBe(type.label)
-    }
+    expect(await getTypeNav()).toHaveLength(before)
+    expect((await getTypeNav())[0].id).toBe(ITEM_TYPE_IDS[0])
   })
 })

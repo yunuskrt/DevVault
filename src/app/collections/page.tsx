@@ -6,8 +6,11 @@ import { pluralize } from '@/lib/format'
 
 type Props = {}
 
-const CollectionsPage = ({}: Props) => {
-  const allCollections = getAllCollections()
+/** Reads the vault, so it can never be a build-time snapshot. */
+export const dynamic = 'force-dynamic'
+
+const CollectionsPage = async ({}: Props) => {
+  const allCollections = await getAllCollections()
 
   return (
     <>

@@ -1,7 +1,10 @@
 /**
- * The vault's domain types. Kept apart from `mock-data.ts` so that replacing
- * mock arrays with filesystem reads changes one module rather than every
- * module that names an `Item` or a `Collection`.
+ * The vault's domain types. Kept apart from where the records come from, so
+ * that reading them off disk rather than out of an array changed one module
+ * rather than every module that names an `Item` or a `Collection`.
+ *
+ * `src/lib/vault/schema.ts` is the runtime mirror of this file; the two are
+ * cross-referenced in comments so drift between them stays visible.
  */
 
 export type ItemTypeId =
@@ -12,11 +15,6 @@ export type ItemTypeId =
   | 'file'
   | 'image'
   | 'url'
-
-export type ItemType = {
-  id: ItemTypeId
-  label: string
-}
 
 /** Pinning and favouriting are item-only concepts; collections carry neither. */
 export type Collection = {

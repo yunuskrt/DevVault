@@ -3,25 +3,24 @@ import { notFound } from 'next/navigation'
 import MainHeader from '@/components/dashboard/MainHeader'
 import ItemBrowser from '@/components/dashboard/ItemBrowser'
 import { getCollectionById, getItemsByCollection } from '@/lib/dashboard-data'
-import { getAllCollectionIds } from '@/lib/vault-index'
 import { pluralize } from '@/lib/format'
 
 type Props = {
   params: Promise<{ collectionId: string }>
 }
 
-export const generateStaticParams = () =>
-  getAllCollectionIds().map((collectionId) => ({ collectionId }))
+/** Reads the vault, so it can never be a build-time snapshot. */
+export const dynamic = 'force-dynamic'
 
 const CollectionPage = async ({ params }: Props) => {
   const { collectionId } = await params
-  const collection = getCollectionById(collectionId)
+  const collection = await getCollectionById(collectionId)
 
   if (!collection) {
     notFound()
   }
 
-  const collectionItems = getItemsByCollection(collection.id)
+  const collectionItems = await getItemsByCollection(collection.id)
 
   return (
     <>

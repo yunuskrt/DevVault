@@ -1,5 +1,5 @@
 /**
- * Writes the contents of `src/lib/mock-data.ts` into `$DEVVAULT_PATH` as real
+ * Writes the contents of `scripts/seed-data.ts` into `$DEVVAULT_PATH` as real
  * Markdown files.
  *
  * This is the only writer in this spec, and it deliberately lives outside
@@ -13,9 +13,10 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+import { resolveInVault } from '@/lib/filesystem/paths'
 import { writeTextFile } from '@/lib/filesystem/read-write'
 import { serializeFrontmatter } from '@/lib/markdown/frontmatter'
-import { collections, items } from '@/lib/mock-data'
+import { collections, items } from './seed-data'
 import {
   CONFIG_PATH,
   collectionFilePath,
@@ -54,13 +55,24 @@ export const seedVault = async (
   }
 
   for (const collection of collections) {
+    const file = collectionFilePath(collection.id)
+
     await write(
-      collectionFilePath(collection.id),
+      file,
       serializeFrontmatter(
         toCollectionFrontmatter(collection),
         collection.description ?? '',
       ),
     )
+
+    // A collection's `updatedAt` is derived on read (§3.4): from its newest
+    // member, or — for a collection with no members — from the file's own
+    // mtime. Seeding writes every file "now", which would leave an empty
+    // collection reading as the most recently updated thing in the vault.
+    // Stamping the mtime is what makes the seeded vault reproduce the dates
+    // the seed data describes, without storing `updatedAt` on disk.
+    const stamp = new Date(collection.updatedAt)
+    await fs.utimes(resolveInVault(root, file), stamp, stamp)
   }
 
   for (const item of items) {
