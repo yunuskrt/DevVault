@@ -5,6 +5,9 @@ import { z } from 'zod'
 
 import { VaultError } from '@/lib/errors'
 import { GitError, describeForLog } from '@/lib/git/errors'
+import { createGitService } from '@/lib/git/simple-git-service'
+import type { SyncOutcome } from '@/lib/git/types'
+import { resolveVaultPath } from '@/lib/vault/config'
 import {
   commitAll,
   createCollection as createCollectionMutation,
@@ -102,6 +105,14 @@ const updateCollectionSchema = z.object({
 const commitSchema = z.object({
   message: z.string().trim().min(1).max(500).optional(),
 })
+
+/**
+ * Sync takes no arguments — what it does is decided entirely from the
+ * repository's own state (§5.6), never from the client. The schema exists so it
+ * goes through the same `action` wrapper as everything else rather than being
+ * the one export that skips validation.
+ */
+const syncSchema = z.object({})
 
 /**
  * The first Zod message, which `describeValidationError`'s counterpart in the
@@ -246,4 +257,31 @@ export const commitChanges = async (
 ): Promise<ActionResult<{ hash: string; files: number }>> =>
   action('commitChanges', commitSchema, input, ({ message }) =>
     commitAll(message),
+  )
+
+/**
+ * Fetches, works out what state the repository is in, and pulls or pushes
+ * accordingly (§5.6). Never a blind `git pull`.
+ *
+ * Revalidation is unconditional rather than gated on "did the working tree
+ * change", which `action` gives for free. A pull and a rebase both rewrite item
+ * files, and `up-to-date` re-rendering costs one vault read on a page that is
+ * `force-dynamic` anyway — whereas an outcome that changed the disk and did
+ * *not* revalidate would leave the app showing items that no longer exist.
+ *
+ * Queueing happens a layer down: `sync` goes through the same write queue as
+ * every mutation (§5.9), which is what stops a sync and a commit colliding on
+ * `.git/index.lock`.
+ *
+ * There is deliberately no `checkRepository` guard here. It reads well, but a
+ * vault that is not a repository already fails at `sync`'s first Git call and
+ * `toGitError` classifies it to the same §7.6 sentence — verified by removing
+ * the guard and watching the test still pass. Keeping it would have meant three
+ * extra subprocesses on every sync to produce an outcome that was identical.
+ */
+export const syncVault = async (
+  input: unknown = {},
+): Promise<ActionResult<SyncOutcome>> =>
+  action('syncVault', syncSchema, input, async () =>
+    createGitService(await resolveVaultPath()).sync(),
   )

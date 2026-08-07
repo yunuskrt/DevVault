@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import { toGitPanelState } from '@/lib/git-panel'
 import { GIT_PANEL_ICONS } from '@/lib/nav-icons'
-import type { GitStatus, GitStatusResult } from '@/lib/git/types'
+import type {
+  GitOperation,
+  GitStatus,
+  GitStatusResult,
+} from '@/lib/git/types'
 
 /*
  * `toGitPanelState` is the §7.1 table. It takes a `GitStatusResult` and returns
@@ -31,12 +35,25 @@ const clean: GitStatus = {
 const ok = (
   overrides: Partial<GitStatus>,
   lastCommit: { date: string } | null = null,
+  extras: { hasRemote?: boolean; operation?: GitOperation | null } = {},
 ): GitStatusResult => ({
   ok: true,
   status: { ...clean, ...overrides },
   lastCommit: lastCommit
     ? { hash: 'abc', message: 'm', author: 'a', date: lastCommit.date }
     : null,
+  /*
+   * A tracked branch implies a remote; the interesting case is a remote with
+   * *no* upstream, which the tests below pass explicitly.
+   *
+   * `in` rather than `??` on `overrides.tracking`: the whole point of most of
+   * these cases is `tracking: null`, and `??` would read that as "not
+   * overridden" and fall back to the tracked default.
+   */
+  hasRemote:
+    extras.hasRemote ??
+    ('tracking' in overrides ? overrides.tracking : clean.tracking) !== null,
+  operation: extras.operation ?? null,
 })
 
 describe('toGitPanelState — repository states', () => {
@@ -59,9 +76,50 @@ describe('toGitPanelState — repository states', () => {
     expect(state.canSync).toBe(false)
   })
 
-  it('offers sync exactly when a branch is tracked', () => {
+  it('distinguishes "no remote" from "never pushed" (§5.5)', () => {
+    /*
+     * `git status` reports these identically — no upstream either way — but one
+     * needs `git remote add` and the other needs a click. Telling a user with a
+     * perfectly good `origin` that their branch "has no remote" sends them to
+     * fix something that is not broken. Caught in the browser on a fresh
+     * branch, where the panel said exactly that.
+     */
+    const noRemote = toGitPanelState(ok({ tracking: null }), NOW)
+    const neverPushed = toGitPanelState(
+      ok({ branch: 'scratch', tracking: null }, null, { hasRemote: true }),
+      NOW,
+    )
+
+    expect(noRemote.description).toContain('has no remote')
+    expect(neverPushed.description).toBe(
+      'Branch scratch has never been pushed. Sync to publish it to the remote.',
+    )
+    expect(neverPushed.summary).toBe('Not pushed')
+    expect(neverPushed.description).not.toContain('has no remote')
+  })
+
+  it('offers sync whenever there is a remote, tracked or not', () => {
     expect(toGitPanelState(ok({}), NOW).canSync).toBe(true)
     expect(toGitPanelState(ok({ tracking: null }), NOW).canSync).toBe(false)
+
+    /*
+     * The case a `tracking !== null` test would get wrong. A vault with a
+     * remote whose branch has never been pushed has no upstream — and that is
+     * exactly the state `push -u` exists to fix (§5.5), so hiding Sync here
+     * would leave the user no way to perform the first push at all.
+     */
+    expect(
+      toGitPanelState(ok({ tracking: null }, null, { hasRemote: true }), NOW)
+        .canSync,
+    ).toBe(true)
+  })
+
+  it('withholds sync while an operation is suspended', () => {
+    // Sync refuses outright mid-rebase (`OPERATION_IN_PROGRESS`), so offering
+    // the control and then rejecting the click would be worse than hiding it.
+    const state = toGitPanelState(ok({}, null, { operation: 'rebase' }), NOW)
+
+    expect(state.canSync).toBe(false)
   })
 
   it('counts ahead and behind separately, with singular wording at one', () => {
@@ -116,6 +174,35 @@ describe('toGitPanelState — precedence', () => {
    * the panel reports on a real repository mid-merge.
    */
 
+  it('puts a suspended operation above everything else, including conflicts', () => {
+    /*
+     * A conflicted file inside a rebase needs different advice than a
+     * conflicted file on its own: committing is not available until the rebase
+     * ends, and `git rebase --abort` undoes the whole sync. Reporting the plain
+     * conflict state here would send the user to a control that cannot help.
+     */
+    const state = toGitPanelState(
+      ok(
+        {
+          conflicted: ['notes/a.md'],
+          modified: ['notes/a.md'],
+          isClean: false,
+          ahead: 1,
+          behind: 1,
+        },
+        null,
+        { operation: 'rebase' },
+      ),
+      NOW,
+    )
+
+    expect(state.summary).toBe('Rebase paused')
+    expect(state.icon).toBe('paused')
+    expect(state.tone).toBe('danger')
+    expect(state.description).toContain('git rebase --abort')
+    expect(state.description).toContain('1 file in conflict')
+  })
+
   it('puts conflicts above everything else', () => {
     const state = toGitPanelState(
       ok({
@@ -147,6 +234,38 @@ describe('toGitPanelState — precedence', () => {
     const state = toGitPanelState(ok({ ahead: 2 }), NOW)
 
     expect(state.summary).toBe('2 to push')
+  })
+
+  it('describes a suspended merge without conflicts, and names its own abort', () => {
+    // A rebase stopped after the user staged their resolutions but before
+    // `--continue`: nothing is conflicted, and the vault is still suspended.
+    const state = toGitPanelState(ok({}, null, { operation: 'merge' }), NOW)
+
+    expect(state.summary).toBe('Merge paused')
+    expect(state.description).toBe(
+      'Merge paused. Finish it, or run `git merge --abort` in your vault to undo it.',
+    )
+  })
+
+  it('does not call a suspended rebase’s detached HEAD a branch', () => {
+    /*
+     * Git checks out a detached HEAD for the duration of a rebase and reports
+     * the branch as the literal string `HEAD` — not the empty string the
+     * fallback was written for. Caught in the browser, where the panel read
+     * "1 file in conflict on HEAD".
+     */
+    const state = toGitPanelState(
+      ok({ branch: 'HEAD', conflicted: ['notes/a.md'], isClean: false }, null, {
+        operation: 'rebase',
+      }),
+      NOW,
+    )
+
+    expect(state.branch).toBe('detached HEAD')
+    expect(state.description).not.toContain('HEAD')
+    expect(state.description).toBe(
+      'Rebase paused with 1 file in conflict. Resolve it, or run `git rebase --abort` in your vault to undo it.',
+    )
   })
 })
 
@@ -368,6 +487,7 @@ describe('toGitPanelState — output contract', () => {
       toGitPanelState(ok({ ahead: 1, behind: 1 }), NOW),
       toGitPanelState(ok({ isClean: false, untracked: ['notes/a.md'] }), NOW),
       toGitPanelState(ok({ isClean: false, conflicted: ['notes/a.md'] }), NOW),
+      toGitPanelState(ok({}, null, { operation: 'rebase' }), NOW),
       toGitPanelState({ ok: false, code: 'NOT_A_REPOSITORY', message: 'm' }, NOW),
       toGitPanelState({ ok: false, code: 'GIT_FAILED', message: 'm' }, NOW),
     ]
@@ -376,7 +496,7 @@ describe('toGitPanelState — output contract', () => {
       expect(GIT_PANEL_ICONS[state.icon], state.summary).toBeTruthy()
     }
 
-    // All nine icons reachable, so none of the map is dead weight.
+    // Every icon reachable, so none of the map is dead weight.
     expect(new Set(states.map((s) => s.icon)).size).toBe(
       Object.keys(GIT_PANEL_ICONS).length,
     )

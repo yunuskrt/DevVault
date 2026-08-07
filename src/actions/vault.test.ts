@@ -23,6 +23,7 @@ const {
   createCollection,
   createItem,
   deleteItem,
+  syncVault,
   toggleFavorite,
   togglePinned,
   updateItem,
@@ -272,5 +273,167 @@ describe('commitChanges', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('nothing to commit')
+  })
+})
+
+describe('syncVault', () => {
+  /*
+   * The §5.6 decision table itself is covered against real repositories in
+   * `lib/git/sync.test.ts`. What is left here is what the *action* layer owns:
+   * the `{ success, data, error }` contract, the revalidation scope, and the
+   * rule that a `SyncOutcome` is data rather than an error — including the two
+   * outcomes that look like failures and are not.
+   */
+
+  /** A vault wired to a bare remote, with one commit already pushed. */
+  const makeSyncedVault = async (): Promise<{
+    root: string
+    remote: string
+  }> => {
+    const root = await makeVault()
+    const remote = path.join(root, '..', `${path.basename(root)}-remote.git`)
+    temporaryDirs.push(remote)
+
+    git(root, 'init', '--bare', '-b', 'main', remote)
+    await fs.writeFile(path.join(root, 'seed.md'), 'x\n', 'utf8')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-m', 'first')
+    git(root, 'remote', 'add', 'origin', remote)
+    git(root, 'push', '-u', 'origin', 'main')
+
+    return { root, remote }
+  }
+
+  it('returns the outcome as data and revalidates layout-scoped', async () => {
+    await makeSyncedVault()
+
+    const result = await syncVault({})
+
+    expect(result.success).toBe(true)
+    expect(result.data).toEqual({ kind: 'up-to-date' })
+    // A pull rewrites the item files themselves, so the whole app has to
+    // re-read — page scope would leave every list stale (§6.2).
+    expect(revalidatePath).toHaveBeenCalledWith('/', 'layout')
+  })
+
+  it('defaults its input, since the sidebar button sends nothing', async () => {
+    await makeSyncedVault()
+
+    expect((await syncVault()).success).toBe(true)
+  })
+
+  it('revalidates after a pull, which changed the items on disk', async () => {
+    const { root, remote } = await makeSyncedVault()
+    // A second clone standing in for the other computer.
+    const other = await fs.mkdtemp(path.join(os.tmpdir(), 'devvault-other-'))
+    temporaryDirs.push(other)
+    git(other, 'clone', remote, other)
+    git(other, 'config', 'user.name', 'Other')
+    git(other, 'config', 'user.email', 'other@example.com')
+    await fs.mkdir(path.join(other, 'notes'), { recursive: true })
+    await fs.writeFile(path.join(other, 'notes/pulled.md'), 'y\n', 'utf8')
+    git(other, 'add', '-A')
+    git(other, 'commit', '-m', 'from elsewhere')
+    git(other, 'push')
+
+    const result = await syncVault({})
+
+    expect(result.data).toEqual({ kind: 'pulled', commits: 1 })
+    expect(revalidatePath).toHaveBeenCalledWith('/', 'layout')
+    // The file really arrived, so the revalidation has something to show.
+    await expect(fs.access(path.join(root, 'notes/pulled.md'))).resolves
+      .toBeUndefined()
+  })
+
+  it('treats a conflict as data, not as an error', async () => {
+    /*
+     * The one that would break the UI most quietly. §7.3 routes a conflict to
+     * the panel's paused state and explicitly gives it **no toast** — but
+     * `SyncButton` only reaches that branch through `result.success`. Map a
+     * conflict to `success: false` and the user gets an error toast and no
+     * route, which is the opposite of what the spec asks for.
+     */
+    const { root, remote } = await makeSyncedVault()
+    const other = await fs.mkdtemp(path.join(os.tmpdir(), 'devvault-other-'))
+    temporaryDirs.push(other)
+    git(other, 'clone', remote, other)
+    git(other, 'config', 'user.name', 'Other')
+    git(other, 'config', 'user.email', 'other@example.com')
+    await fs.writeFile(path.join(other, 'seed.md'), 'theirs\n', 'utf8')
+    git(other, 'commit', '-am', 'their edit')
+    git(other, 'push')
+    // The same file, edited here too, so the replay cannot apply.
+    await fs.writeFile(path.join(root, 'seed.md'), 'mine\n', 'utf8')
+    git(root, 'commit', '-am', 'my edit')
+
+    const result = await syncVault({})
+
+    expect(result.success).toBe(true)
+    expect(result.data).toEqual({ kind: 'conflict', paths: ['seed.md'] })
+    // The working tree changed, so the app still has to re-read.
+    expect(revalidatePath).toHaveBeenCalledWith('/', 'layout')
+  })
+
+  it('treats a missing remote as data, not as an error', async () => {
+    // Same reasoning: `no-remote` is a state to report, and §7.3 gives it its
+    // own toast rather than the error one.
+    await makeVault()
+    await fs.writeFile(
+      path.join(process.env.DEVVAULT_PATH as string, 'a.md'),
+      'x\n',
+      'utf8',
+    )
+    git(process.env.DEVVAULT_PATH as string, 'add', '-A')
+    git(process.env.DEVVAULT_PATH as string, 'commit', '-m', 'first')
+
+    const result = await syncVault({})
+
+    expect(result.success).toBe(true)
+    expect(result.data).toEqual({ kind: 'no-remote' })
+  })
+
+  it('reports a vault that is not a repository as an ordinary failure', async () => {
+    /*
+     * Spec 3 shipped with exactly this state, so it is a prompt rather than a
+     * crash — and the message has to name the fix. There is no explicit guard
+     * producing this: `sync`'s first Git call fails and `toGitError` classifies
+     * it, which is why the sentence has to be asserted here rather than assumed
+     * from a `throw` somewhere in the action.
+     */
+    await makeVault({ repo: false })
+
+    const result = await syncVault({})
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('git init')
+  })
+
+  it('never lets a credential in the remote URL reach the caller', async () => {
+    /*
+     * The action layer passes `GitError` messages through untouched, which is
+     * the whole point of that class — so this pins that the class is actually
+     * being relied on rather than the raw engine message escaping around it.
+     * Git echoes remote URLs into its error output freely.
+     */
+    const root = await makeVault()
+    await fs.writeFile(path.join(root, 'a.md'), 'x\n', 'utf8')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-m', 'first')
+    git(
+      root,
+      'remote',
+      'add',
+      'origin',
+      'https://ghp_actionlayersecret@nonexistent-host.invalid/u/v.git',
+    )
+
+    const result = await syncVault({})
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe(
+      'Could not reach the remote. Check your connection and the remote URL.',
+    )
+    expect(result.error).not.toContain('ghp_actionlayersecret')
+    expect(result.error).not.toContain('nonexistent-host')
   })
 })

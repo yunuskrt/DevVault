@@ -50,6 +50,10 @@ const MESSAGES: Record<GitErrorCode, string> = {
     'Git took too long to respond. Check whether an operation is waiting on a password prompt.',
   AUTH_FAILED:
     'Could not authenticate with the remote. Check your Git credentials.',
+  REMOTE_UNREACHABLE:
+    'Could not reach the remote. Check your connection and the remote URL.',
+  OPERATION_IN_PROGRESS:
+    'Your vault is in the middle of a rebase or merge. Finish it, or run `git rebase --abort` in your vault, before syncing again.',
   // Both of the below are handled before they reach a user in normal use — the
   // caller falls back to the filesystem, or reports "nothing to commit" as the
   // ordinary state it is. They carry a sentence anyway because `messageFor` is
@@ -86,8 +90,25 @@ const PATTERNS: ReadonlyArray<[RegExp, GitErrorCode]> = [
   [/index\.lock/i, 'INDEX_LOCKED'],
   [/timeout|timed out/i, 'TIMEOUT'],
   [
-    /authentication failed|could not read username|could not read password|permission denied \(publickey\)|invalid username or password/i,
+    /rebase in progress|already a rebase-(merge|apply) directory|you are in the middle of|cherry-pick is already in progress|revert is already in progress|you have unmerged files/i,
+    'OPERATION_IN_PROGRESS',
+  ],
+  /*
+   * Authentication before unreachability, and the order is load-bearing: an SSH
+   * key rejection prints "Permission denied (publickey)" *and* "Could not read
+   * from remote repository", so a pattern generous enough to catch a dead host
+   * would swallow the auth case and send the user to check their network when
+   * the fix is their key. For the same reason "could not read from remote
+   * repository" appears in neither pattern — it is common to both and decides
+   * nothing.
+   */
+  [
+    /authentication failed|could not read username|could not read password|permission denied \(publickey\)|invalid username or password|access denied/i,
     'AUTH_FAILED',
+  ],
+  [
+    /could not resolve host|could not resolve hostname|connection refused|network is unreachable|no route to host|failed to connect|unable to access|does not appear to be a git repository|repository not found/i,
+    'REMOTE_UNREACHABLE',
   ],
 ]
 

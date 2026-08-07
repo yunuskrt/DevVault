@@ -62,6 +62,19 @@ export type SyncOutcome =
   | { kind: 'no-remote' }
 
 /**
+ * A multi-step Git operation the working tree is currently suspended in.
+ *
+ * §9.7: uncommitted changes at startup are normal, a half-finished rebase is
+ * not. A vault left here by a previous session has to be surfaced rather than
+ * letting the next Sync fail confusingly — and every Git write is unsafe until
+ * it is finished or abandoned.
+ *
+ * `cherry-pick` and `revert` are not states DevVault can create, but a user can
+ * from a terminal, and they are just as unsafe to write over.
+ */
+export type GitOperation = 'rebase' | 'merge' | 'cherry-pick' | 'revert'
+
+/**
  * `sync` and `resolve` remain unimplemented until specs 6 and 7; both throw.
  * They stay declared so those specs fill in a shape that already exists rather
  * than each inventing its own.
@@ -75,6 +88,17 @@ export interface GitService {
   log(opts?: { path?: string; limit?: number }): Promise<GitCommit[]>
   stage(paths: string[]): Promise<void>
   commit(message: string): Promise<{ hash: string }>
+  /**
+   * Configured remote names, in Git's own order.
+   *
+   * Separate from `status()` because it answers a different question and costs
+   * its own subprocess: `git status` reports the *upstream branch*, which is
+   * null both when no remote exists and when one exists but this branch has
+   * never been pushed. §5.5 needs those apart — the first is a setup gap, the
+   * second is a `push -u` away.
+   */
+  remotes(): Promise<string[]>
+  /** Fetch, inspect, then decide (§5.6). Never a blind `git pull`. */
   sync(): Promise<SyncOutcome>
   fileAtRevision(path: string, hash: string): Promise<string>
   discard(paths: string[]): Promise<void>
@@ -105,7 +129,20 @@ export interface GitService {
  * an exceptional condition that should take a page down with it.
  */
 export type GitStatusResult =
-  | { ok: true; status: GitStatus; lastCommit: GitCommit | null }
+  | {
+      ok: true
+      status: GitStatus
+      lastCommit: GitCommit | null
+      /**
+       * Whether *any* remote is configured, which `status.tracking` cannot
+       * answer on its own — see `GitService.remotes`. Drives whether Sync is
+       * offered at all: a branch with no upstream but a remote to push to is
+       * the ordinary state of a vault that has never been pushed.
+       */
+      hasRemote: boolean
+      /** Non-null when the vault is suspended mid-rebase or mid-merge (§9.7). */
+      operation: GitOperation | null
+    }
   | { ok: false; code: GitErrorCode; message: string }
 
 export type GitErrorCode =
@@ -121,6 +158,14 @@ export type GitErrorCode =
   | 'TIMEOUT'
   /** The remote rejected the credentials. */
   | 'AUTH_FAILED'
+  /** The remote could not be reached at all — offline, bad URL, DNS. */
+  | 'REMOTE_UNREACHABLE'
+  /**
+   * A rebase, merge, cherry-pick or revert is suspended. Every write is refused
+   * until it is finished or abandoned, because Git would refuse anyway and with
+   * a far less actionable message.
+   */
+  | 'OPERATION_IN_PROGRESS'
   /**
    * `rm` or `mv` was asked about a file Git does not track. Not a user-facing
    * failure — an item written but never committed is exactly this — so the
