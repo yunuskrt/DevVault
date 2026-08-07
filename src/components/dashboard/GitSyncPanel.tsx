@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { GitBranch, RefreshCw } from 'lucide-react'
+import CommitButton from '@/components/dashboard/CommitButton'
 import {
   Tooltip,
   TooltipContent,
@@ -31,24 +32,44 @@ const TONE_CLASS: Record<GitPanelTone, string> = {
 const GitSyncPanel = ({ git, collapsed }: Props) => {
   const StateIcon = GIT_PANEL_ICONS[git.icon]
 
+  /*
+   * The only state with a real control. In every other state there is either
+   * nothing to commit or something that has to be dealt with first — a
+   * conflict, a missing repository, an unset identity — so the summary stays
+   * the plain text it was.
+   */
+  const canCommit = git.icon === 'uncommitted'
+
   if (collapsed) {
     return (
       <div className="flex shrink-0 justify-center border-t border-sidebar-border/60 p-3">
         <Tooltip>
           <TooltipTrigger asChild>
-            {/*
-             * The state icon rather than a branch icon: collapsed, this is the
-             * only thing distinguishing synced from conflicted.
-             */}
-            <span className="flex items-center">
-              <StateIcon
-                aria-hidden="true"
-                className={cn('size-4', TONE_CLASS[git.tone])}
+            {canCommit ? (
+              <CommitButton
+                collapsed
+                label={git.summary}
+                description={git.description}
+                icon={git.icon}
+                toneClass={TONE_CLASS[git.tone]}
               />
-              <span className="sr-only">{git.description}</span>
-            </span>
+            ) : (
+              /*
+               * The state icon rather than a branch icon: collapsed, this is
+               * the only thing distinguishing synced from conflicted.
+               */
+              <span className="flex items-center">
+                <StateIcon
+                  aria-hidden="true"
+                  className={cn('size-4', TONE_CLASS[git.tone])}
+                />
+                <span className="sr-only">{git.description}</span>
+              </span>
+            )}
           </TooltipTrigger>
-          <TooltipContent side="right">{git.description}</TooltipContent>
+          <TooltipContent side="right">
+            {canCommit ? `Commit changes. ${git.description}` : git.description}
+          </TooltipContent>
         </Tooltip>
       </div>
     )
@@ -63,23 +84,37 @@ const GitSyncPanel = ({ git, collapsed }: Props) => {
         </span>
         <Tooltip>
           <TooltipTrigger asChild>
-            {/*
-             * The full §7.6 sentence does not fit a 256px footer, so the
-             * summary carries the state and the tooltip carries the fix. The
-             * `sr-only` copy means the sentence is not hover-only.
-             */}
-            <span
-              className={cn(
-                'flex shrink-0 items-center gap-1',
-                TONE_CLASS[git.tone],
-              )}
-            >
-              <StateIcon aria-hidden="true" className="size-3.5" />
-              {git.summary}
-              <span className="sr-only">. {git.description}</span>
-            </span>
+            {canCommit ? (
+              /* The dirty count is the commit control (§7.2). */
+              <CommitButton
+                label={git.summary}
+                description={git.description}
+                icon={git.icon}
+                toneClass={TONE_CLASS[git.tone]}
+              />
+            ) : (
+              /*
+               * The full §7.6 sentence does not fit a 256px footer, so the
+               * summary carries the state and the tooltip carries the fix. The
+               * `sr-only` copy means the sentence is not hover-only.
+               */
+              <span
+                className={cn(
+                  'flex shrink-0 items-center gap-1',
+                  TONE_CLASS[git.tone],
+                )}
+              >
+                <StateIcon aria-hidden="true" className="size-3.5" />
+                {git.summary}
+                <span className="sr-only">. {git.description}</span>
+              </span>
+            )}
           </TooltipTrigger>
-          <TooltipContent side="top">{git.description}</TooltipContent>
+          <TooltipContent side="top">
+            {canCommit
+              ? `Commit these changes. ${git.description}`
+              : git.description}
+          </TooltipContent>
         </Tooltip>
       </div>
 

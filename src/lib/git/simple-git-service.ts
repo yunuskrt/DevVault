@@ -2,7 +2,12 @@ import 'server-only'
 
 import { simpleGit, type SimpleGit } from 'simple-git'
 
-import { GitError, toGitError } from '@/lib/git/errors'
+import { GitError, messageFor, toGitError } from '@/lib/git/errors'
+import {
+  assertIndexUnlocked,
+  enqueueGitWrite,
+  resetGitQueue,
+} from '@/lib/git/queue'
 import type { GitCommit, GitService, GitStatus, SyncOutcome } from '@/lib/git/types'
 
 /** §5.9: a credential prompt on a remote must never hang a request forever. */
@@ -80,6 +85,10 @@ export const isGitInstalled = (root: string): Promise<boolean> => {
 export const resetGitCaches = (): void => {
   gitInstalled = undefined
   instances.clear()
+  // The queue is keyed by root and temp-directory roots are never reused, so
+  // this is belt and braces — but a test that forgot it would leave a resolved
+  // tail behind and the next case would chain onto a stranger's promise.
+  resetGitQueue()
 }
 
 const notImplemented = (method: string): never => {
@@ -91,6 +100,26 @@ const notImplemented = (method: string): never => {
 
 export const createGitService = (root: string): GitService => {
   const git = gitFor(root)
+
+  /**
+   * The one path every index-touching command takes: queued behind any other
+   * write to this vault, checked for a foreign `index.lock` first, and with
+   * whatever the engine threw converted to a `GitError` (§5.9).
+   *
+   * Wrapping it here rather than at each call site is what makes "every
+   * mutating call is serialized" a property of the module instead of a rule
+   * six methods have to remember.
+   */
+  const write = <T>(task: () => Promise<T>): Promise<T> =>
+    enqueueGitWrite(root, async () => {
+      await assertIndexUnlocked(root)
+
+      try {
+        return await task()
+      } catch (error) {
+        throw toGitError(error)
+      }
+    })
 
   return {
     async status(): Promise<GitStatus> {
@@ -110,6 +139,12 @@ export const createGitService = (root: string): GitService => {
           deleted: raw.deleted,
           conflicted: raw.conflicted,
           untracked: raw.not_added,
+          // The engine's own shape, narrowed: it types these loosely enough
+          // that `from`/`to` are optional, but a rename always has both.
+          renamed: raw.renamed.map((rename) => ({
+            from: rename.from,
+            to: rename.to,
+          })),
           isClean: raw.isClean(),
         }
       } catch (error) {
@@ -152,13 +187,69 @@ export const createGitService = (root: string): GitService => {
       }
     },
 
-    // Specs 5–7. Declared on the interface so those specs implement a shape
-    // that already exists; calling one today is a bug, not a no-op.
-    stage: () => notImplemented('stage'),
-    commit: () => notImplemented('commit'),
+    /**
+     * §5.4: explicit paths, never `git add -A`. The vault repository is the
+     * user's own and may hold files DevVault did not put there; sweeping them
+     * into a commit labelled `Add note: …` would be a lie about what happened.
+     */
+    stage(paths: string[]): Promise<void> {
+      return write(async () => {
+        if (paths.length === 0) return
+        await git.add(paths)
+      })
+    },
+
+    commit(message: string): Promise<{ hash: string }> {
+      return write(async () => {
+        const result = await git.commit(message)
+
+        // simple-git resolves rather than throws when there was nothing
+        // staged, so the empty case has to be recognised from the summary.
+        if (!result.commit) {
+          throw new GitError(
+            'NOTHING_TO_COMMIT',
+            messageFor('NOTHING_TO_COMMIT'),
+          )
+        }
+
+        return { hash: result.commit }
+      })
+    },
+
+    /** `git checkout -- <paths>`: throws away uncommitted edits. */
+    discard(paths: string[]): Promise<void> {
+      return write(async () => {
+        if (paths.length === 0) return
+        await git.checkout(['--', ...paths])
+      })
+    },
+
+    remove(paths: string[]): Promise<void> {
+      return write(async () => {
+        if (paths.length === 0) return
+        await git.rm(paths)
+      })
+    },
+
+    move(from: string, to: string): Promise<void> {
+      return write(async () => {
+        await git.mv(from, to)
+      })
+    },
+
+    async fileAtRevision(path: string, hash: string): Promise<string> {
+      try {
+        // Reads an object out of the store; takes no index lock, so it is not
+        // queued.
+        return await git.show([`${hash}:${path}`])
+      } catch (error) {
+        throw toGitError(error)
+      }
+    },
+
+    // Specs 6 and 7. Declared on the interface so those specs implement a
+    // shape that already exists; calling one today is a bug, not a no-op.
     sync: (): Promise<SyncOutcome> => notImplemented('sync'),
-    fileAtRevision: () => notImplemented('fileAtRevision'),
-    discard: () => notImplemented('discard'),
     resolve: () => notImplemented('resolve'),
   }
 }

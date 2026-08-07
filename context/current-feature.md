@@ -1219,3 +1219,177 @@ Known gaps and follow-ups:
   `MainHeader`'s search is still `readOnly`, a collection's `description` still
   renders nowhere on its own page, the display-only controls still give no
   feedback on click, and there is still no lint script or ESLint config.
+
+### Git Vault 5 — Writes and Commits — 2026-08-07
+
+Made the vault writable. Spec 5 of 7
+(`context/features/git-vault-5-write-commit-spec.md`). Server Actions that
+create, update and delete items and collections, an explicit commit, two Route
+Handlers, and the one piece of commit UI that belongs in the sidebar.
+
+The model is §7.2's **write-through, commit explicitly**: saving writes the file
+to disk immediately and committing is a separate deliberate act. The layering
+enforces it rather than relying on care — `writer.ts` touches the filesystem and
+runs no Git at all, and `mutations.ts` owns the *order*, so a Git failure can
+never cost the user their edit. The worst case is a file on disk that is not yet
+committed, which is a state the panel already knows how to render.
+
+**`lib/vault/writer.ts`** holds slug generation (`-2`/`-3` on collision, §3.2),
+writes, moves and deletes. `slugify` emits `[a-z0-9-]` only, which is what makes
+it safe to interpolate into a path — `resolveInVault` is still the boundary, but
+this is the layer that stops a legitimate title from ever reaching it as a
+traversal. `NFKD` before stripping combining marks means `Café` becomes `cafe`
+rather than `caf`.
+
+**`lib/git/queue.ts`** is §5.9's queue, one promise chain per vault root. Reads
+are deliberately *not* queued — `status` and `log` take no lock, and putting
+them behind the same queue would make every page render wait on whatever commit
+was in flight. It also fails fast on a foreign `.git/index.lock`, distinguishing
+a lock held right now from a stale one by age, because "try again in a moment"
+is useless advice for a lock left by a crashed process.
+
+**`lib/vault/mutations.ts`** is the domain layer the actions call and the CLI
+will reuse (todo phase 4). `validated()` round-trips every candidate through
+`toItemFrontmatter` → Zod → `toItem`, which makes "anything written can be read
+back identically" true by construction rather than by inspection. `updateItem`
+compares the *serialized forms* of the old and new items rather than comparing
+against the file, so a no-op save writes nothing even when the file on disk was
+hand-edited into a different key order — the end-to-end proof of spec 1's stable
+serialization.
+
+**`src/actions/vault.ts`** owns exactly three things: Zod validation at the
+boundary, `revalidatePath('/', 'layout')` in one place so the scope cannot be
+right in eight actions and wrong in the ninth, and error mapping. A `VaultError`
+or `GitError` message is written for a user and passes through; anything else is
+logged server-side and replaced.
+
+**`lib/git/commit-message.ts`** imports nothing and carries no `server-only`
+guard, so the CLI and the UI can both reach it.
+
+Decisions taken at `/feature start`:
+
+- **Auto-generated commit messages, no prompt** (user's call), matching the
+  drawer screenshot's single **Commit changes** button with no message field.
+- **Commit stages every dirty vault-managed path** (user's call), including
+  files hand-edited in an editor — the Git-native promise. `isVaultManagedPath`
+  is what keeps that from becoming `git add -A`.
+- **`git mv` on a title edit** (user's call, and §3.2 requires asking). This was
+  the load-bearing one: once a path can diverge from its `id`, the writer can no
+  longer derive a path from an id, so `readVault` now returns `itemPaths` and
+  `collectionPaths`. §3.2 called for that index anyway.
+- **Multi-file commits read `Update vault: 4 files`**, not the spec's
+  illustrative "items" — the staged set can hold collection files and
+  `.devvault/config.json`, so counting those as items would be wrong.
+
+**Three bugs found by verifying rather than by testing.** All were invisible
+until the code ran against a real repository:
+
+1. **`commitAll` failed outright whenever a deletion was pending.** `git rm`
+   leaves a path in neither the working tree nor the index, and `git add`
+   rejects the whole command for it. The delete tests asserted `git status` and
+   stopped — nothing committed afterwards.
+2. **`simple-git` parses a rename into its own `renamed` array** and into none
+   of `staged`, `created` or `deleted`. So `commitAll` saw nothing to commit
+   after a rename — and, latent since spec 4, `changedFileCount` would have
+   reported "0 uncommitted" on a renamed-only vault while `isClean` said dirty.
+   Nothing renamed files before this spec, so it had never surfaced.
+3. **`git rm` is all-or-nothing.** A binary item's mixed batch — a tracked
+   sidecar beside a never-committed asset — dropped the *sidecar* to the
+   filesystem fallback, leaving its deletion unstaged.
+
+A fourth was found during `/feature test`, by a mutation run that hung instead
+of failing: **a binary item's path comes from `fileName`, not its slug**, so
+folding that path into `uniqueSlug`'s `taken` predicate made it constant-true
+and no suffix could ever free it. Synchronous, so it blocked the event loop and
+took the whole server down rather than failing one request. Measured at exit
+`124` (killed at 25s) with the bug and 426ms without. The upload route never
+reaches it because it uniquifies the asset name first, but `createItem` is
+exported and the CLI and phase 2b UI both call it directly. It now throws
+`ITEM_EXISTS`, and `uniqueSlug` documents that `taken` must depend on its
+argument.
+
+**The asset endpoint answers every failure identically.** Passing the
+`VaultError` message through was the natural implementation and quietly broke
+it: `PATH_ESCAPE` names the boundary it hit and echoes the requested path, which
+turns a 404 into a probe for what the vault contains. Traversal, a file outside
+`images/`/`files/`, a directory and a plain miss now return the same body.
+
+**`GIT_TERMINAL_PROMPT` and the spec's §5.9 recipe** were already corrected in
+spec 4; nothing here revisited it.
+
+**A user-reported bug closed after the fact.** The panel counted every dirty
+path while Commit staged only vault-managed ones, so a stray `.DS_Store`
+produced "1 uncommitted" followed by "there is nothing to commit". The count now
+filters through the same `isVaultManagedPath`, and the uncommitted state keys on
+that count rather than on `isClean` — Git calls the repository dirty for a file
+DevVault does not manage, and keying on `isClean` would have shown "0
+uncommitted" instead of falling through to "Local only".
+
+The vault's `.gitignore` became an allow-list (user's call), **generated from
+`TYPE_DIRECTORIES`** rather than written by hand: a new item type would
+otherwise land in a directory Git ignores, producing items that save correctly,
+appear in the app and silently never commit. `scripts/seed-vault.ts` writes it
+for new vaults. One Git subtlety it has to respect — `/*` excludes `.devvault`
+as a *directory*, and Git cannot re-include a file whose parent is excluded, so
+`!/.devvault/config.json` silently does nothing and `!/.devvault/` is what
+works. The tests assert through `git check-ignore` rather than by reading the
+text, because that semantics is the thing being relied on.
+
+**The client-boundary test's model needed updating.** A `'use server'` file is a
+real boundary — the browser bundle carries `createServerReference("<id>")` and
+zero occurrences of `DEVVAULT_PATH`, `simpleGit` or `index.lock`, verified in
+`.next/static/` — so the graph walk now stops there. Two tests exist so the
+suite cannot go vacuous if the directive is ever dropped.
+
+**Verification.** All ten spec items were exercised against the real vault at
+`~/devvault`, not only against temp directories. Item 5 is worth recording in
+full: with the queue disabled, **5 of 10** concurrent creates and **2 of 6**
+concurrent toggles failed on `index.lock`; with it, 16 of 16 succeeded and no
+lock was left behind. The spec flagged that check as the one most likely to be
+skipped, and it is now demonstrated rather than asserted. `autoCommit` turned
+five edits into one commit. Baseline counts held exactly before and after
+(21 / 5 / 6 / 2 / 4 / 3 / 0 / 3 / 2 / 1 / 1, stats 12 / 6 / 5 / 3). Playwright
+reported zero console errors and zero warnings across the session, including the
+commit click.
+
+**Testing.** 398 tests across 27 files, up from 241 across 18. **42 mutations
+applied, 42 caught** — but four only after strengthening tests that were weaker
+than they looked: the `index.lock` precheck could be deleted entirely without
+failing anything (the *stale*-lock message is the part Git does not produce),
+the `UNTRACKED_PATH` fallback was never exercised because `createItem` stages
+the file it writes, the upload cleanup test branched on `payload.success` and
+passed either way without forcing a failure, and `GitStatus.renamed` was tested
+only against a hand-written literal — deleting the service's entire mapping left
+`git-panel.test.ts` green. That is the fifth time in this series that trusting a
+green mutation run would have banked a worthless test.
+
+Known gaps and follow-ups:
+
+- **Item CRUD UI is phase 2b and deliberately absent.** `createItem`,
+  `updateItem`, `deleteItem`, the collection actions and both toggles have no UI
+  caller; the upload endpoint has no form. Only `commitChanges` is wired, to the
+  sidebar. The display-only buttons (New Item, `New {Type}`, New Collection,
+  `CollectionCardMenu` Edit/Delete) are still display-only, as the spec required.
+- **`autoCommit` cannot revalidate.** It fires ~5s after the request has
+  returned, so there is no request scope to revalidate — the panel picks the
+  commit up on the next navigation, which `force-dynamic` makes certain. The
+  debounce timer is `unref`'d and lives in a module-scope `Map`, so a dev-server
+  hot reload could in principle strand one.
+- **`updateItem` bumps `updatedAt` on a favourite or pin toggle**, which
+  reorders "Recently updated". That follows the spec's "set `updatedAt` on
+  write" literally; whether a flag change should count as an edit is worth
+  deciding when the toggles get a UI.
+- Every mutation calls `readVault`, so a save re-walks the whole vault. Correct
+  and cheap at 18 files; it grows linearly.
+- `AUTH_FAILED` and `TIMEOUT` are still pattern-tested rather than provoked —
+  they need a remote, which is spec 6.
+- `stage`, `commit`, `discard`, `remove`, `move` and `fileAtRevision` are
+  implemented; `sync` and `resolve` still throw, for specs 6 and 7.
+- The allow-list `.gitignore` means a `README.md` or the user's own folder at
+  the vault root is no longer trackable. Anything already committed stays
+  tracked, and a `!/README.md` line restores it.
+- Carried forward untouched: the sidebar's Pinned and Recent rows are still
+  inert `div`s, the sidebar's "Recent" count still means `items.length`,
+  `MainHeader`'s search is still `readOnly`, a collection's `description` still
+  renders nowhere on its own page, the vault-error surface is still only a
+  server log (spec 7), and there is still no lint script or ESLint config.

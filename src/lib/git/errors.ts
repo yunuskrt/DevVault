@@ -50,6 +50,14 @@ const MESSAGES: Record<GitErrorCode, string> = {
     'Git took too long to respond. Check whether an operation is waiting on a password prompt.',
   AUTH_FAILED:
     'Could not authenticate with the remote. Check your Git credentials.',
+  // Both of the below are handled before they reach a user in normal use — the
+  // caller falls back to the filesystem, or reports "nothing to commit" as the
+  // ordinary state it is. They carry a sentence anyway because `messageFor` is
+  // total over the union and a code with no message would be a silent blank.
+  UNTRACKED_PATH:
+    'Git is not tracking that file yet.',
+  NOTHING_TO_COMMIT:
+    'There is nothing to commit — the vault has no uncommitted changes.',
   GIT_FAILED:
     'Git reported an error. Run `git status` in your vault for details.',
 }
@@ -67,6 +75,13 @@ export const messageFor = (code: GitErrorCode): string => MESSAGES[code]
 const PATTERNS: ReadonlyArray<[RegExp, GitErrorCode]> = [
   [/ENOENT|command not found|spawn git/i, 'GIT_NOT_INSTALLED'],
   [/not a git repository/i, 'NOT_A_REPOSITORY'],
+  // `git rm` and `git mv` on a file Git has never seen. The wordings differ
+  // between the two commands and between Git versions, hence the alternation.
+  [
+    /did not match any files|not under version control|pathspec .* did not match/i,
+    'UNTRACKED_PATH',
+  ],
+  [/nothing to commit|no changes added to commit/i, 'NOTHING_TO_COMMIT'],
   [/please tell me who you are|empty ident|user\.(name|email)/i, 'IDENTITY_UNSET'],
   [/index\.lock/i, 'INDEX_LOCKED'],
   [/timeout|timed out/i, 'TIMEOUT'],

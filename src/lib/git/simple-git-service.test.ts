@@ -336,16 +336,13 @@ describe('log', () => {
 describe('unimplemented operations', () => {
   it('throws rather than silently doing nothing', async () => {
     /*
-     * Specs 5–7 fill these in. A no-op would be the dangerous shape: a caller
-     * would believe it had committed.
+     * Specs 6 and 7 fill these in. A no-op would be the dangerous shape: a
+     * caller would believe it had synced. `stage`, `commit`, `discard` and
+     * `fileAtRevision` landed in spec 5 and are covered by their own tests.
      */
     const service = createGitService(await makeRepo())
 
-    expect(() => service.stage(['a.md'])).toThrow(/not available yet/)
-    expect(() => service.commit('m')).toThrow(/not available yet/)
     expect(() => service.sync()).toThrow(/not available yet/)
-    expect(() => service.discard(['a.md'])).toThrow(/not available yet/)
     expect(() => service.resolve('a.md', 'ours')).toThrow(/not available yet/)
-    expect(() => service.fileAtRevision('a.md', 'HEAD')).toThrow(/not available yet/)
   })
 })

@@ -17,6 +17,19 @@ export type VaultErrorCode =
   | 'PATH_ESCAPE'
   /** `.devvault/config.json` exists but is not valid. */
   | 'CONFIG_INVALID'
+  /** A record was asked for by id and the vault does not hold it. */
+  | 'ITEM_NOT_FOUND'
+  | 'COLLECTION_NOT_FOUND'
+  /** A write was refused because the record does not satisfy the schema. */
+  | 'ITEM_INVALID'
+  /**
+   * A create was refused because a record already occupies the file it would
+   * write. Only reachable for binary items, whose path comes from `fileName`
+   * rather than from an id a suffix could free.
+   */
+  | 'ITEM_EXISTS'
+  /** An asset was requested and no readable file sits at that path. */
+  | 'ASSET_NOT_FOUND'
 
 export class VaultError extends Error {
   readonly code: VaultErrorCode

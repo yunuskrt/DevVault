@@ -15,6 +15,7 @@ import {
   collections as seedCollections,
   items as seedItems,
 } from '../../../scripts/seed-data'
+import { vaultGitignore } from '@/lib/vault/layout'
 import { readVault } from '@/lib/vault/reader'
 import type { Collection } from '@/types/vault'
 
@@ -48,6 +49,29 @@ describe('readVault over a freshly seeded vault', () => {
     expect(result.errors).toEqual([])
     expect(result.items).toHaveLength(12)
     expect(result.collections).toHaveLength(6)
+  })
+
+  it('reports where each record was read from (§3.2)', () => {
+    /*
+     * The path is not derivable from the id: it comes from the title on
+     * create, and a title edit renames the file while the id stays put. The
+     * writer would otherwise recompute a path from the id and write a *second*
+     * file claiming an id that already exists.
+     */
+    expect(result.itemPaths.size).toBe(12)
+    expect(result.collectionPaths.size).toBe(6)
+
+    for (const item of result.items) {
+      const path = result.itemPaths.get(item.id)
+      expect(path).toBeDefined()
+      expect(path?.endsWith('.md')).toBe(true)
+    }
+
+    for (const collection of result.collections) {
+      expect(result.collectionPaths.get(collection.id)).toBe(
+        `collections/${collection.id}.md`,
+      )
+    }
   })
 
   it('returns exactly the items the seed data describes', () => {
@@ -223,7 +247,13 @@ describe('readVault over a directory that is not a vault', () => {
 
     // A root-level README is neither an item nor a collection, and ignoring it
     // is what lets a user keep ordinary Markdown alongside their vault.
-    expect(result).toEqual({ items: [], collections: [], errors: [] })
+    expect(result).toEqual({
+      items: [],
+      collections: [],
+      errors: [],
+      itemPaths: new Map(),
+      collectionPaths: new Map(),
+    })
 
     await fs.rm(root, { recursive: true, force: true })
   })
@@ -250,9 +280,12 @@ describe('seedVault', () => {
     await expect(
       fs.readFile(path.join(root, '.devvault/config.json'), 'utf8'),
     ).resolves.toContain('"schemaVersion": 1')
+    // The generated allow-list, not a literal — `layout.test.ts` asserts what
+    // it actually ignores by asking `git check-ignore`. All this needs to know
+    // is that seeding writes it rather than the one-line version it replaced.
     await expect(
       fs.readFile(path.join(root, '.gitignore'), 'utf8'),
-    ).resolves.toBe('.devvault/cache/\n')
+    ).resolves.toBe(vaultGitignore())
 
     await fs.rm(root, { recursive: true, force: true })
   })

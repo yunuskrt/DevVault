@@ -39,6 +39,21 @@ export type VaultLoadResult = {
   items: Item[]
   collections: Collection[]
   errors: VaultLoadError[]
+  /**
+   * `id` → the vault-relative path the record was read from (§3.2).
+   *
+   * The path is *not* derivable from the id: it is derived from the title on
+   * create, and a title edit renames the file while the id stays put. A writer
+   * that recomputed the path from the id would write a second file claiming an
+   * id that already exists, which the loop below reports as a duplicate. So
+   * the only reliable way to find an existing record's file is to remember
+   * where it was read from.
+   *
+   * Only ids that loaded cleanly appear here — a file rejected above has no
+   * trustworthy id to key on.
+   */
+  itemPaths: ReadonlyMap<string, string>
+  collectionPaths: ReadonlyMap<string, string>
 }
 
 /**
@@ -153,5 +168,13 @@ export const readVault = async (root: string): Promise<VaultLoadResult> => {
     }
   }
 
-  return { items, collections, errors }
+  return {
+    items,
+    collections,
+    errors,
+    // Already built above for duplicate detection; returning them costs
+    // nothing and is what lets the writer find an existing record's file.
+    itemPaths: itemPathsById,
+    collectionPaths: collectionPathsById,
+  }
 }

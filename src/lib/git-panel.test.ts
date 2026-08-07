@@ -24,6 +24,7 @@ const clean: GitStatus = {
   deleted: [],
   conflicted: [],
   untracked: [],
+  renamed: [],
   isClean: true,
 }
 
@@ -158,12 +159,102 @@ describe('toGitPanelState — uncommitted file count', () => {
      * dirty. Verified against a real repository at 20 files.
      */
     const state = toGitPanelState(
-      ok({ untracked: ['a.md', 'b.md', 'c.md'], isClean: false }),
+      ok({
+        untracked: ['notes/a.md', 'notes/b.md', 'snippets/c.md'],
+        isClean: false,
+      }),
       NOW,
     )
 
     expect(state.summary).toBe('3 uncommitted')
     expect(state.description).toBe('3 files changed on main and not yet committed.')
+  })
+
+  it('ignores files DevVault does not manage', () => {
+    /*
+     * The bug this fixes, reported from a real vault: macOS wrote a `.DS_Store`
+     * into it, the panel counted it and offered "1 uncommitted", and clicking
+     * Commit answered "there is nothing to commit".
+     *
+     * §5.4 forbids staging files DevVault did not put there, so `commitAll`
+     * had always filtered them — the count simply did not. The count and the
+     * action have to describe the same set, and `isVaultManagedPath` is now
+     * the single definition of it.
+     */
+    const state = toGitPanelState(
+      ok({
+        untracked: ['.DS_Store', 'scratch.txt', 'vendor/thing.md'],
+        isClean: false,
+      }),
+      NOW,
+    )
+
+    expect(state.summary).not.toBe('3 uncommitted')
+    expect(state.icon).not.toBe('uncommitted')
+  })
+
+  it('counts only the managed files in a mixed set', () => {
+    const state = toGitPanelState(
+      ok({
+        untracked: ['.DS_Store', 'notes/real.md', 'scratch.txt'],
+        modified: ['snippets/other.md'],
+        isClean: false,
+      }),
+      NOW,
+    )
+
+    expect(state.summary).toBe('2 uncommitted')
+  })
+
+  it('reads as clean when only unmanaged files are dirty', () => {
+    /*
+     * Git calls the repository dirty; DevVault has nothing to commit. Falling
+     * through to the ordinary states is what stops the button appearing with
+     * no work to do — keying on `isClean` would have shown "0 uncommitted".
+     */
+    const state = toGitPanelState(
+      ok({ untracked: ['.DS_Store'], isClean: false }),
+      NOW,
+    )
+
+    expect(state.icon).toBe('synced')
+    expect(state.summary).toBe('Synced')
+  })
+
+  it('counts a renamed file, which lands in no other array', () => {
+    /*
+     * The same class of bug as `untracked` above, and §3.2 makes it routine:
+     * editing an item's title renames its file. The engine parses `R from ->
+     * to` into a `renamed` array and into neither `staged`, `created` nor
+     * `deleted`, so a vault whose only pending change is a renamed item would
+     * otherwise offer to commit "0 files" while reporting itself dirty.
+     */
+    const state = toGitPanelState(
+      ok({
+        renamed: [{ from: 'notes/old.md', to: 'notes/new.md' }],
+        isClean: false,
+      }),
+      NOW,
+    )
+
+    expect(state.summary).toBe('1 uncommitted')
+  })
+
+  it('counts a rename as one file, not two', () => {
+    // `git status` prints one line for it, and the user moved one item.
+    const state = toGitPanelState(
+      ok({
+        renamed: [
+          { from: 'notes/a.md', to: 'notes/b.md' },
+          { from: 'notes/c.md', to: 'notes/d.md' },
+        ],
+        modified: ['notes/e.md'],
+        isClean: false,
+      }),
+      NOW,
+    )
+
+    expect(state.summary).toBe('3 uncommitted')
   })
 
   it('counts a file staged and then modified again only once', () => {
@@ -180,11 +271,11 @@ describe('toGitPanelState — uncommitted file count', () => {
   it('adds up distinct paths across every change kind', () => {
     const state = toGitPanelState(
       ok({
-        staged: ['a.md'],
-        modified: ['b.md'],
-        created: ['c.md'],
-        deleted: ['d.md'],
-        untracked: ['e.md'],
+        staged: ['notes/a.md'],
+        modified: ['snippets/b.md'],
+        created: ['prompts/c.md'],
+        deleted: ['commands/d.md'],
+        untracked: ['collections/e.md'],
         isClean: false,
       }),
       NOW,
@@ -207,7 +298,9 @@ describe('toGitPanelState — last commit', () => {
   it('says so when the repository has no commits yet', () => {
     // Real state: `git init` with nothing committed, where `git log` exits
     // non-zero and the service returns an empty array.
-    expect(toGitPanelState(ok({ isClean: false, untracked: ['a.md'] }), NOW).detail).toBe(
+    expect(
+      toGitPanelState(ok({ isClean: false, untracked: ['notes/a.md'] }), NOW).detail,
+    ).toBe(
       'No commits yet',
     )
   })
@@ -273,8 +366,8 @@ describe('toGitPanelState — output contract', () => {
       toGitPanelState(ok({ ahead: 1 }), NOW),
       toGitPanelState(ok({ behind: 1 }), NOW),
       toGitPanelState(ok({ ahead: 1, behind: 1 }), NOW),
-      toGitPanelState(ok({ isClean: false, untracked: ['a'] }), NOW),
-      toGitPanelState(ok({ isClean: false, conflicted: ['a'] }), NOW),
+      toGitPanelState(ok({ isClean: false, untracked: ['notes/a.md'] }), NOW),
+      toGitPanelState(ok({ isClean: false, conflicted: ['notes/a.md'] }), NOW),
       toGitPanelState({ ok: false, code: 'NOT_A_REPOSITORY', message: 'm' }, NOW),
       toGitPanelState({ ok: false, code: 'GIT_FAILED', message: 'm' }, NOW),
     ]

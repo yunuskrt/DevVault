@@ -21,6 +21,7 @@ import {
   CONFIG_PATH,
   collectionFilePath,
   itemFilePath,
+  vaultGitignore,
 } from '@/lib/vault/layout'
 import {
   itemBody,
@@ -97,8 +98,9 @@ export const seedVault = async (
     )}\n`,
   )
 
-  // Derived state only; the vault's content is all committed.
-  await write('.gitignore', '.devvault/cache/\n')
+  // An allow-list: only DevVault's own content is trackable, so a `.DS_Store`
+  // or a stray download never shows up as an uncommitted change.
+  await write('.gitignore', vaultGitignore())
 
   return written
 }

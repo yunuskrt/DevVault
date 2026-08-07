@@ -88,8 +88,26 @@ describe('classifyGitError', () => {
     ['block timeout reached', 'TIMEOUT'],
     ["fatal: Authentication failed for 'https://github.com/me/vault.git/'", 'AUTH_FAILED'],
     ['fatal: could not read Username for \'https://github.com\'', 'AUTH_FAILED'],
+    // `rm` and `mv` word this differently, and differently again across Git
+    // versions — hence the alternation in the pattern.
+    ["fatal: pathspec 'notes/a.md' did not match any files", 'UNTRACKED_PATH'],
+    ['fatal: not under version control, source=notes/a.md, destination=notes/b.md', 'UNTRACKED_PATH'],
+    ['error: the following file has no staged changes\nnothing to commit, working tree clean', 'NOTHING_TO_COMMIT'],
   ] as const)('maps %j', (message, expected) => {
     expect(classifyGitError(new Error(message))).toBe(expected)
+  })
+
+  it('classifies a missing repository before an unmatched pathspec', () => {
+    // Order matters: `git rm` inside a non-repository reports both conditions,
+    // and telling the user "Git is not tracking that file" would send them
+    // looking for the wrong problem.
+    expect(
+      classifyGitError(
+        new Error(
+          "fatal: not a git repository (or any of the parent directories): .git\nfatal: pathspec 'a.md' did not match any files",
+        ),
+      ),
+    ).toBe('NOT_A_REPOSITORY')
   })
 
   it('falls back to a generic code rather than guessing', () => {
