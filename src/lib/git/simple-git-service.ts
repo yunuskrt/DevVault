@@ -8,6 +8,7 @@ import {
   enqueueGitWrite,
   resetGitQueue,
 } from '@/lib/git/queue'
+import { readGitOperation } from '@/lib/git/repo-state'
 import type { GitCommit, GitService, GitStatus, SyncOutcome } from '@/lib/git/types'
 
 /** §5.9: a credential prompt on a remote must never hang a request forever. */
@@ -121,36 +122,256 @@ export const createGitService = (root: string): GitService => {
       }
     })
 
-  return {
-    async status(): Promise<GitStatus> {
-      try {
-        // One `git status --porcelain -b -u` under the hood: branch, upstream,
-        // ahead/behind and every changed path in a single subprocess.
-        const raw = await git.status()
+  /**
+   * Hoisted out of the object literal because `sync` calls it several times and
+   * `this` inside a returned literal is not something to rely on.
+   */
+  const readStatus = async (): Promise<GitStatus> => {
+    try {
+      // One `git status --porcelain -b -u` under the hood: branch, upstream,
+      // ahead/behind and every changed path in a single subprocess.
+      const raw = await git.status()
 
-        return {
-          branch: raw.current ?? '',
-          tracking: raw.tracking ?? null,
-          ahead: raw.ahead,
-          behind: raw.behind,
-          staged: raw.staged,
-          modified: raw.modified,
-          created: raw.created,
-          deleted: raw.deleted,
-          conflicted: raw.conflicted,
-          untracked: raw.not_added,
-          // The engine's own shape, narrowed: it types these loosely enough
-          // that `from`/`to` are optional, but a rename always has both.
-          renamed: raw.renamed.map((rename) => ({
-            from: rename.from,
-            to: rename.to,
-          })),
-          isClean: raw.isClean(),
+      return {
+        branch: raw.current ?? '',
+        tracking: raw.tracking ?? null,
+        ahead: raw.ahead,
+        behind: raw.behind,
+        staged: raw.staged,
+        modified: raw.modified,
+        created: raw.created,
+        deleted: raw.deleted,
+        conflicted: raw.conflicted,
+        untracked: raw.not_added,
+        // The engine's own shape, narrowed: it types these loosely enough
+        // that `from`/`to` are optional, but a rename always has both.
+        renamed: raw.renamed.map((rename) => ({
+          from: rename.from,
+          to: rename.to,
+        })),
+        isClean: raw.isClean(),
+      }
+    } catch (error) {
+      throw toGitError(error)
+    }
+  }
+
+  const listRemotes = async (): Promise<string[]> => {
+    try {
+      return (await git.getRemotes(false)).map((remote) => remote.name)
+    } catch (error) {
+      throw toGitError(error)
+    }
+  }
+
+  /**
+   * How many commits `branch` has that the remote does not.
+   *
+   * The fallback is for the first push, where there is no `origin/<branch>` to
+   * subtract because the push is what creates it. It measures against *every*
+   * ref the remote has rather than against nothing: a new branch cut from an
+   * already-pushed `main` is one commit ahead of the remote, not the length of
+   * its whole history, and reporting "Pushed 12 commits" for a single note was
+   * how this surfaced.
+   *
+   * A remote with no refs at all — a bare repository that has never been pushed
+   * to — matches nothing, so the count is the whole history, which is correct
+   * there.
+   */
+  const countAhead = async (
+    branch: string,
+    remote: string,
+    upstream: string,
+  ): Promise<number> => {
+    const count = async (args: string[]): Promise<number> =>
+      Number.parseInt((await git.raw(args)).trim(), 10)
+
+    try {
+      return await count(['rev-list', '--count', branch, `^${upstream}`])
+    } catch {
+      try {
+        return await count([
+          'rev-list',
+          '--count',
+          branch,
+          '--not',
+          `--remotes=${remote}`,
+        ])
+      } catch {
+        // No commits on the branch at all — a repository that has been
+        // `git init`ed and never committed to.
+        return 0
+      }
+    }
+  }
+
+  /**
+   * Conflicts a step left behind **despite exiting zero**.
+   *
+   * `--autostash` and `merge.autoStash` stash the user's uncommitted edits,
+   * complete the pull, and then try to restore them. When that restore
+   * conflicts — the edit and the incoming commits touched the same file — Git
+   * prints "Applying autostash resulted in conflicts", leaves `UU` entries in
+   * the working tree, **and exits 0**. Verified against Git 2.39.3 on both the
+   * `merge --ff-only` and the `pull --rebase` path.
+   *
+   * So the `catch` blocks alone are not enough: without this, a sync that left
+   * conflict markers sitting in a vault file would be reported as a success,
+   * which is the §7.5 lie the whole feature is supposed to avoid.
+   */
+  const conflictsInWorkingTree = async (): Promise<SyncOutcome | null> => {
+    const after = await readStatus()
+
+    return after.conflicted.length > 0
+      ? { kind: 'conflict', paths: after.conflicted }
+      : null
+  }
+
+  /**
+   * Fetch, inspect, then decide (§5.6).
+   *
+   * The whole sequence is one queued unit rather than a queued command per
+   * step: between the fetch and the merge, a concurrent commit would change
+   * `ahead` out from under the decision that was just made on it, and the
+   * branch taken would no longer match the repository it is applied to.
+   */
+  const sync = (): Promise<SyncOutcome> =>
+    write(async () => {
+      /*
+       * Refused up front rather than left to Git. A vault suspended mid-rebase
+       * fails every one of the commands below with a different message, none of
+       * which says "you are mid-rebase, here is how to get out" — which is the
+       * only thing the user needs to know (§9.7).
+       */
+      const suspended = await readGitOperation(root)
+      if (suspended) {
+        throw new GitError(
+          'OPERATION_IN_PROGRESS',
+          messageFor('OPERATION_IN_PROGRESS'),
+        )
+      }
+
+      const remotes = await listRemotes()
+      if (remotes.length === 0) return { kind: 'no-remote' }
+
+      // `origin` by convention, but a vault cloned with `-o upstream` is
+      // perfectly valid and there is no reason to refuse it.
+      const remote = remotes.includes('origin') ? 'origin' : remotes[0]
+
+      await git.fetch(remote)
+
+      const status = await readStatus()
+
+      /*
+       * A remote exists but this branch has never been pushed. §5.5: detect it
+       * and send `-u`, rather than letting a plain push fail with Git's
+       * "set-upstream" suggestion string, which is advice the user cannot act
+       * on from inside DevVault.
+       */
+      if (!status.tracking) {
+        if (!status.branch) {
+          throw new GitError(
+            'GIT_FAILED',
+            'Your vault is not on a branch (detached HEAD). Check it out onto a branch before syncing.',
+          )
         }
+
+        const commits = await countAhead(
+          status.branch,
+          remote,
+          `${remote}/${status.branch}`,
+        )
+        if (commits === 0) return { kind: 'up-to-date' }
+
+        await git.push(['-u', remote, status.branch])
+        return { kind: 'pushed', commits }
+      }
+
+      const { ahead, behind, tracking } = status
+
+      if (ahead === 0 && behind === 0) return { kind: 'up-to-date' }
+
+      /*
+       * The case worth isolating: a fast-forward **cannot** conflict, and on a
+       * single-user vault it is the overwhelmingly common sync. Routing it
+       * through a path with no failure mode is most of the reliability this
+       * feature will ever have.
+       *
+       * `merge.autoStash` covers the one way the merge can still be refused —
+       * uncommitted edits to a file the incoming commits also touch, which Git
+       * declines to overwrite. Verification item 6 is exactly this, and the
+       * `--autostash` on the diverged path below does not reach here.
+       */
+      if (behind > 0 && ahead === 0) {
+        await git.raw([
+          '-c',
+          'merge.autoStash=true',
+          'merge',
+          '--ff-only',
+          tracking,
+        ])
+        return (await conflictsInWorkingTree()) ?? { kind: 'pulled', commits: behind }
+      }
+
+      if (ahead > 0 && behind === 0) {
+        await git.push()
+        return { kind: 'pushed', commits: ahead }
+      }
+
+      /*
+       * Diverged. Rebase rather than merge: a vault is one person's notes on
+       * two machines, so replaying the local commits on top gives linear,
+       * readable history instead of merge commits littering a knowledge repo.
+       */
+      try {
+        await git.raw(['pull', '--rebase', '--autostash'])
       } catch (error) {
+        const [operation, after] = await Promise.all([
+          readGitOperation(root),
+          readStatus(),
+        ])
+
+        /*
+         * Detect and stop cleanly — resolution is spec 7.
+         *
+         * The `conflicted` half is the one that carries a real case: a working
+         * tree already holding `UU` entries from an earlier failed autostash
+         * makes `git pull` refuse outright, with no rebase started. The
+         * `operation` half is defensive and has no test that fails without it —
+         * every way `git pull --rebase` is known to stop leaves conflicts too,
+         * and a rebase that skips an identical commit does not stop at all
+         * (checked, not assumed). It is kept because the alternative is a
+         * *toast* on a vault left mid-rebase, which §7.3 rules out; the panel
+         * would still show the paused state either way, since `loadGitStatus`
+         * reads the marker itself rather than trusting this outcome.
+         */
+        if (operation === 'rebase' || after.conflicted.length > 0) {
+          return { kind: 'conflict', paths: after.conflicted }
+        }
+
         throw toGitError(error)
       }
-    },
+
+      /*
+       * The rebase itself succeeded, which does not mean the working tree is
+       * clean — see `conflictsInWorkingTree`. Nothing is pushed in that case:
+       * the commits are sound, but reporting a completed sync over a file full
+       * of conflict markers would be the lie, and the next Sync pushes them
+       * once the user has dealt with it.
+       */
+      const stalled = await conflictsInWorkingTree()
+      if (stalled) return stalled
+
+      // The rebase replayed our commits on top of theirs, so they are still
+      // unpushed. Both counts are what the user gets told (§7.3).
+      await git.push()
+      return { kind: 'synced', pulled: behind, pushed: ahead }
+    })
+
+  return {
+    status: readStatus,
+
+    remotes: listRemotes,
 
     async log({ path, limit }: { path?: string; limit?: number } = {}): Promise<
       GitCommit[]
@@ -247,9 +468,10 @@ export const createGitService = (root: string): GitService => {
       }
     },
 
-    // Specs 6 and 7. Declared on the interface so those specs implement a
-    // shape that already exists; calling one today is a bug, not a no-op.
-    sync: (): Promise<SyncOutcome> => notImplemented('sync'),
+    sync,
+
+    // Spec 7. Declared on the interface so that spec implements a shape which
+    // already exists; calling it today is a bug, not a no-op.
     resolve: () => notImplemented('resolve'),
   }
 }

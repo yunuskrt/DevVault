@@ -17,6 +17,8 @@ const ALL_CODES: GitErrorCode[] = [
   'INDEX_LOCKED',
   'TIMEOUT',
   'AUTH_FAILED',
+  'REMOTE_UNREACHABLE',
+  'OPERATION_IN_PROGRESS',
   'GIT_FAILED',
 ]
 
@@ -93,8 +95,43 @@ describe('classifyGitError', () => {
     ["fatal: pathspec 'notes/a.md' did not match any files", 'UNTRACKED_PATH'],
     ['fatal: not under version control, source=notes/a.md, destination=notes/b.md', 'UNTRACKED_PATH'],
     ['error: the following file has no staged changes\nnothing to commit, working tree clean', 'NOTHING_TO_COMMIT'],
+    // Spec 6. Network failures reach a user as often as auth ones, and until
+    // now both fell through to "run `git status` for details".
+    ["fatal: unable to access 'https://github.com/me/vault.git/': Could not resolve host: github.com", 'REMOTE_UNREACHABLE'],
+    ['ssh: Could not resolve hostname github.com: nodename nor servname provided', 'REMOTE_UNREACHABLE'],
+    ["fatal: '/tmp/gone.git' does not appear to be a git repository", 'REMOTE_UNREACHABLE'],
+    ['fatal: unable to access: Failed to connect to github.com port 443: Connection refused', 'REMOTE_UNREACHABLE'],
+    ['fatal: It seems that there is already a rebase-merge directory', 'OPERATION_IN_PROGRESS'],
+    ['error: could not commit. You have unmerged files.', 'OPERATION_IN_PROGRESS'],
   ] as const)('maps %j', (message, expected) => {
     expect(classifyGitError(new Error(message))).toBe(expected)
+  })
+
+  it('classifies a rejected credential as auth, not as an unreachable remote', () => {
+    /*
+     * The order that matters most in this file, and the string is chosen so it
+     * actually tests the order: an HTTPS rejection prints "unable to access"
+     * — which the unreachability pattern matches — *and* "Authentication
+     * failed". Whichever pattern is consulted first wins, so moving
+     * `REMOTE_UNREACHABLE` above `AUTH_FAILED` would send the user to check
+     * their network when the fix is their token.
+     */
+    expect(
+      classifyGitError(
+        new Error(
+          "fatal: unable to access 'https://github.com/me/vault.git/': The requested URL returned error: 403\nfatal: Authentication failed for 'https://github.com/me/vault.git/'",
+        ),
+      ),
+    ).toBe('AUTH_FAILED')
+
+    // The same overlap from the SSH side.
+    expect(
+      classifyGitError(
+        new Error(
+          'git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.',
+        ),
+      ),
+    ).toBe('AUTH_FAILED')
   })
 
   it('classifies a missing repository before an unmatched pathspec', () => {

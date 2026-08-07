@@ -100,6 +100,9 @@ export type GitPanelIcon =
   | 'behind'
   | 'diverged'
   | 'conflict'
+  /** Suspended mid-rebase or mid-merge — distinct from a plain conflict, which
+   * the user can resolve and commit; this one has to be finished or aborted. */
+  | 'paused'
   | 'local-only'
   | 'no-repo'
   | 'error'

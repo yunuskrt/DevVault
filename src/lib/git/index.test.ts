@@ -122,6 +122,60 @@ describe('loadGitStatus — states the panel renders', () => {
     expect(result.status.branch).toBe('main')
     expect(result.status.isClean).toBe(true)
     expect(result.lastCommit?.message).toBe('first')
+    // Spec 6 additions. A vault with no remote must not offer Sync, and one
+    // that is not mid-anything must not show the paused state.
+    expect(result.hasRemote).toBe(false)
+    expect(result.operation).toBeNull()
+  })
+
+  it('reports a configured remote, which `tracking` alone cannot', async () => {
+    /*
+     * `status.tracking` is null both here and with no remote at all, so without
+     * this field the panel cannot tell "never pushed" from "nothing to push
+     * to" — and would hide Sync in exactly the state `push -u` exists for.
+     */
+    const root = await makeDir('devvault-remote-')
+    git(root, 'init', '-b', 'main')
+    git(root, 'config', 'user.name', 'Vault Tester')
+    git(root, 'config', 'user.email', 'tester@example.com')
+    await fs.writeFile(path.join(root, 'a.md'), 'a', 'utf8')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-m', 'first')
+    git(root, 'remote', 'add', 'origin', path.join(root, 'unused.git'))
+
+    const result = await withVault(root, loadGitStatus)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.status.tracking).toBeNull()
+    expect(result.hasRemote).toBe(true)
+  })
+
+  it('surfaces a vault left suspended mid-rebase (§9.7)', async () => {
+    const root = await makeDir('devvault-rebasing-')
+    git(root, 'init', '-b', 'main')
+    git(root, 'config', 'user.name', 'Vault Tester')
+    git(root, 'config', 'user.email', 'tester@example.com')
+    await fs.writeFile(path.join(root, 'a.md'), 'base', 'utf8')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-m', 'base')
+    git(root, 'checkout', '-b', 'side')
+    await fs.writeFile(path.join(root, 'a.md'), 'side', 'utf8')
+    git(root, 'commit', '-am', 'side')
+    git(root, 'checkout', 'main')
+    await fs.writeFile(path.join(root, 'a.md'), 'main', 'utf8')
+    git(root, 'commit', '-am', 'main')
+    try {
+      git(root, 'rebase', 'side')
+    } catch {
+      /* stops on the conflict, which is the state under test */
+    }
+
+    const result = await withVault(root, loadGitStatus)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.operation).toBe('rebase')
   })
 
   it('returns a null last commit for a repository with nothing committed', async () => {

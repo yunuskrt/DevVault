@@ -8,6 +8,7 @@ import {
   createGitService,
   isGitInstalled,
 } from '@/lib/git/simple-git-service'
+import { readGitOperation } from '@/lib/git/repo-state'
 import type { GitErrorCode, GitStatusResult } from '@/lib/git/types'
 import { resolveVaultPath } from '@/lib/vault/config'
 
@@ -48,13 +49,22 @@ export const loadGitStatus = cache(async (): Promise<GitStatusResult> => {
   const git = createGitService(root)
 
   try {
-    // Both reads are independent, and `log` is the slower of the two.
-    const [status, commits] = await Promise.all([
+    // All four reads are independent, and `log` is the slowest. `operation` is
+    // filesystem-only, so it adds no subprocess (§9.7).
+    const [status, commits, remotes, operation] = await Promise.all([
       git.status(),
       git.log({ limit: 1 }),
+      git.remotes(),
+      readGitOperation(root),
     ])
 
-    return { ok: true, status, lastCommit: commits[0] ?? null }
+    return {
+      ok: true,
+      status,
+      lastCommit: commits[0] ?? null,
+      hasRemote: remotes.length > 0,
+      operation,
+    }
   } catch (error) {
     const gitError = toGitError(error)
     console.error(`[devvault] git status failed: ${describeForLog(error)}`)

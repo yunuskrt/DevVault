@@ -336,13 +336,13 @@ describe('log', () => {
 describe('unimplemented operations', () => {
   it('throws rather than silently doing nothing', async () => {
     /*
-     * Specs 6 and 7 fill these in. A no-op would be the dangerous shape: a
-     * caller would believe it had synced. `stage`, `commit`, `discard` and
-     * `fileAtRevision` landed in spec 5 and are covered by their own tests.
+     * Spec 7 fills `resolve` in. A no-op would be the dangerous shape: a caller
+     * would believe it had resolved something. `stage`, `commit`, `discard` and
+     * `fileAtRevision` landed in spec 5 and `sync` in spec 6; all are covered
+     * by their own tests.
      */
     const service = createGitService(await makeRepo())
 
-    expect(() => service.sync()).toThrow(/not available yet/)
     expect(() => service.resolve('a.md', 'ours')).toThrow(/not available yet/)
   })
 })

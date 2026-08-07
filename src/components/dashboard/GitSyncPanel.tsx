@@ -1,8 +1,9 @@
 'use client'
 
 import React from 'react'
-import { GitBranch, RefreshCw } from 'lucide-react'
+import { GitBranch } from 'lucide-react'
 import CommitButton from '@/components/dashboard/CommitButton'
+import SyncButton from '@/components/dashboard/SyncButton'
 import {
   Tooltip,
   TooltipContent,
@@ -41,6 +42,19 @@ const GitSyncPanel = ({ git, collapsed }: Props) => {
   const canCommit = git.icon === 'uncommitted'
 
   if (collapsed) {
+    /*
+     * One control fits the rail, so the more urgent of the two wins: pending
+     * edits are lost work until they are committed, whereas an unsynced commit
+     * is already safe on this machine. Either way the button keeps rendering
+     * the state icon, which collapsed is the only thing distinguishing synced
+     * from conflicted.
+     */
+    const collapsedTooltip = canCommit
+      ? `Commit changes. ${git.description}`
+      : git.canSync
+        ? `Sync with the remote. ${git.description}`
+        : git.description
+
     return (
       <div className="flex shrink-0 justify-center border-t border-sidebar-border/60 p-3">
         <Tooltip>
@@ -53,11 +67,14 @@ const GitSyncPanel = ({ git, collapsed }: Props) => {
                 icon={git.icon}
                 toneClass={TONE_CLASS[git.tone]}
               />
+            ) : git.canSync ? (
+              <SyncButton
+                collapsed
+                description={git.description}
+                icon={git.icon}
+                toneClass={TONE_CLASS[git.tone]}
+              />
             ) : (
-              /*
-               * The state icon rather than a branch icon: collapsed, this is
-               * the only thing distinguishing synced from conflicted.
-               */
               <span className="flex items-center">
                 <StateIcon
                   aria-hidden="true"
@@ -67,9 +84,7 @@ const GitSyncPanel = ({ git, collapsed }: Props) => {
               </span>
             )}
           </TooltipTrigger>
-          <TooltipContent side="right">
-            {canCommit ? `Commit changes. ${git.description}` : git.description}
-          </TooltipContent>
+          <TooltipContent side="right">{collapsedTooltip}</TooltipContent>
         </Tooltip>
       </div>
     )
@@ -122,11 +137,7 @@ const GitSyncPanel = ({ git, collapsed }: Props) => {
         <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground/70">
           <span className="truncate">{git.detail}</span>
           {git.canSync && (
-            /* Display-only until spec 6 wires the sync action. */
-            <span className="flex shrink-0 items-center gap-1">
-              <RefreshCw aria-hidden="true" className="size-3" />
-              Sync
-            </span>
+            <SyncButton description={git.description} icon={git.icon} />
           )}
         </div>
       )}
