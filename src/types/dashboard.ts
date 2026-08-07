@@ -79,3 +79,48 @@ export type SidebarNav = {
   types: TypeNavEntry[]
   collections: CollectionNavEntry[]
 }
+
+/*
+ * Git sync panel.
+ *
+ * A sibling of `SidebarNav` rather than a field on it: `SidebarNav` is every
+ * *list* the sidebar renders, and Git state is neither a list nor navigation.
+ * Keeping them apart also means a failing Git read cannot take the nav with
+ * it.
+ *
+ * Like the nav types, this crosses to the client as a prop, so it holds
+ * finished strings and an icon *key* — never a `LucideIcon`, never a
+ * `GitStatus`. The panel renders it without deriving anything.
+ */
+
+export type GitPanelIcon =
+  | 'synced'
+  | 'uncommitted'
+  | 'ahead'
+  | 'behind'
+  | 'diverged'
+  | 'conflict'
+  | 'local-only'
+  | 'no-repo'
+  | 'error'
+
+export type GitPanelTone = 'ok' | 'info' | 'warn' | 'danger'
+
+export type GitPanelState = {
+  icon: GitPanelIcon
+  tone: GitPanelTone
+  /** Null when there is no repository, so no branch to name. */
+  branch: string | null
+  /** Terse, for the 256px footer: `Synced`, `18 uncommitted`, `2 to push`. */
+  summary: string
+  /** Second line — `Last commit 4m ago`. Null when there is nothing to say. */
+  detail: string | null
+  /**
+   * The full sentence. Shown in the tooltip and used as the collapsed rail's
+   * `sr-only` text, which is why every state has one: collapsed, it is the
+   * only thing a screen reader gets.
+   */
+  description: string
+  /** False when there is nothing to sync — no repository, or no remote. */
+  canSync: boolean
+}

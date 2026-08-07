@@ -12,7 +12,7 @@ import { PRIMARY_NAV_ICONS } from '@/lib/nav-icons'
 import SidebarRow from './SidebarRow'
 import SidebarSection from './SidebarSection'
 import GitSyncPanel from './GitSyncPanel'
-import type { SidebarNav } from '@/types/dashboard'
+import type { GitPanelState, SidebarNav } from '@/types/dashboard'
 
 type Props = {
   /**
@@ -21,12 +21,20 @@ type Props = {
    * into the browser bundle.
    */
   nav: SidebarNav
+  /** Also derived on the server, for the same reason — Git shells out. */
+  git: GitPanelState
   collapsed: boolean
   onToggle?: () => void
   onNavigate?: () => void
 }
 
-const SidebarContent = ({ nav, collapsed, onToggle, onNavigate }: Props) => {
+const SidebarContent = ({
+  nav,
+  git,
+  collapsed,
+  onToggle,
+  onNavigate,
+}: Props) => {
   const pathname = usePathname()
   const [typesOpen, setTypesOpen] = useState(true)
   const [collectionsOpen, setCollectionsOpen] = useState(true)
@@ -177,7 +185,7 @@ const SidebarContent = ({ nav, collapsed, onToggle, onNavigate }: Props) => {
         </nav>
       </ScrollArea>
 
-      <GitSyncPanel collapsed={collapsed} />
+      <GitSyncPanel git={git} collapsed={collapsed} />
     </div>
   )
 }

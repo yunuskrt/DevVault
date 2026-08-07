@@ -10,7 +10,9 @@ import {
   getPrimaryNav,
   getTypeNav,
 } from "@/lib/dashboard-nav";
-import type { SidebarNav } from "@/types/dashboard";
+import { loadGitStatus } from "@/lib/git";
+import { toGitPanelState } from "@/lib/git-panel";
+import type { GitPanelState, SidebarNav } from "@/types/dashboard";
 
 const geistSans = Geist({
   variable: "--font-sans",
@@ -43,6 +45,7 @@ export default async function RootLayout({
   // Derived on the server: the sidebar is a client component and must never
   // reach into the vault itself.
   let nav: SidebarNav;
+  let git: GitPanelState;
 
   try {
     nav = {
@@ -50,6 +53,10 @@ export default async function RootLayout({
       types: await getTypeNav(),
       collections: await getCollectionNav(),
     };
+    // `loadGitStatus` swallows every Git failure into a state the panel can
+    // render, so a vault without a repository — or without Git at all — still
+    // shows every item. Only a missing vault reaches the catch below.
+    git = toGitPanelState(await loadGitStatus());
   } catch (error) {
     // The layout is the first thing to touch the vault, so it is where a
     // missing one surfaces. Returning the setup screen here means `children`
@@ -76,7 +83,9 @@ export default async function RootLayout({
       className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <DashboardShell nav={nav}>{children}</DashboardShell>
+        <DashboardShell nav={nav} git={git}>
+          {children}
+        </DashboardShell>
         <Toaster />
       </body>
     </html>

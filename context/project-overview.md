@@ -160,7 +160,7 @@ No `User`, `Item`, `Tag`, or `Collection` database models are required for the l
 | Language    | TypeScript                                   |
 | Database    | **None — Git repository as source of truth** |
 | Data Format | Markdown + YAML frontmatter                  |
-| Git         | isomorphic-git / Git                         |
+| Git         | simple-git (wraps the system `git` binary)   |
 | CLI         | Node.js + Commander.js                       |
 | Search      | MiniSearch / FlexSearch                      |
 | CSS/UI      | Tailwind CSS v4 + ShadCN                     |
