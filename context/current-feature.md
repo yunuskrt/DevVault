@@ -1,97 +1,18 @@
-# Current Feature: Git Vault 3 — Read Model Swap
+# Current Feature
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-In Progress
+Not Started
 
 ## Goals
 
 <!-- Goals & requirements -->
 
-- **Request-scoped loader.** `src/lib/vault/index.ts` replaces
-  `src/lib/vault-index.ts`, exporting `loadVault = cache(async () => readVault(await resolveVaultPath()))`.
-  React `cache()` dedupes within one request (layout and page both need the
-  vault, disk is hit once) and re-reads on the next. No cross-request caching.
-- **Reverse indexes become async.** `findCollection`, `getAllCollectionIds`,
-  `topCollectionsByRecency` and `getItemsInCollection` keep their names and
-  meanings but read from `loadVault()`. The module-scope `Map` construction and
-  its "only valid while the vault is static" header comment are deleted.
-- **Async accessors.** All ten accessors in `dashboard-data.ts` and the three
-  getters in `dashboard-nav.ts` become `async`; signatures otherwise unchanged,
-  including the optional `now` parameter that threads one clock through every
-  timestamp.
-- **Pure modules stay untouched:** `dashboard-mappers.ts`, `item-sort.ts`,
-  `collection-sort.ts`, `sort-utils.ts`, `item-types.ts`, `format.ts`. If one of
-  them has to change, the layering is wrong.
-- **Rendering model.** `export const dynamic = 'force-dynamic'` on every route
-  that reads the vault; delete `generateStaticParams` from `/items/[type]` and
-  `/collections/[collectionId]`; every page component becomes `async`.
-- **Delete `src/lib/mock-data.ts`.** Move `itemTypes` (the fixed list of seven
-  built-in types, not vault data) into `src/lib/item-types.ts` beside
-  `ITEM_TYPE_META`. Inline the seed data into `scripts/seed-vault.ts` so the
-  seeded vault stays reproducible after the deletion.
-- **Vault errors are not silently dropped.** Everything that parsed still
-  renders; `VaultLoadResult.errors` is logged server-side. The user-facing
-  surface is spec 7.
-- **Missing or unset vault renders a setup screen** explaining what to set — not
-  a stack trace, and not an empty dashboard that looks like a working vault with
-  no content. This is the first thing a new user hits.
-
 ## Notes
 
 <!-- Any extra notes -->
-
-Spec: `context/features/git-vault-3-read-model-spec.md` (3 of 7).
-Series overview: `context/features/git-vault-0-overview.md`.
-Design: `docs/git-vault-architecture.md` — §6.1 (rendering), §4.2 (`vault/index.ts`).
-
-This is where phase 1's headline promise lands. Specs 1 and 2 exist to make it
-small: the reader already works and no client component reaches the vault, so
-what is left is turning three modules async and changing how routes render.
-Still no Git.
-
-**Verification — every number must match the baseline exactly:**
-
-1. `/` 21 cards; stats 12 / 6 / 5 / 3.
-2. `/favorites` 5, `/collections` 6, `react-patterns` 2, `devops-commands` 4,
-   `context-files` 3, `resources-links` 0, `/items/snippet` 3, `command` 2,
-   `url` 1, `image` 1.
-3. Sidebar order and dot colours unchanged; `/collections` dots 3 blue,
-   2 purple, 2 orange, 1 yellow, 1 muted.
-4. 13 accent gradients on `/` in the same per-type distribution.
-5. Relative dates still render, no hydration warnings — timestamps still
-   computed on the server and passed down as finished strings.
-6. `/collections/nope` 404s.
-7. **Hand-edit a file in the vault, reload, see the change.** The single check
-   that proves the spec did what it claims.
-8. Delete a vault file; counts drop everywhere consistently.
-9. `grep -rn "mock-data" src/` returns nothing.
-10. `npm run build` passes; routes are dynamic rather than prerendered — confirm
-    the build output changed the way expected.
-
-**Known state going in (from spec 2's notes):**
-
-- Spec 2 already folded `label` into `ITEM_TYPE_META` and deleted
-  `TYPE_LABELS`, so the duplication the spec mentions is half closed already.
-  What remains is the second label source: `getTypeNav()` still reads
-  `itemTypes[].label` from `mock-data.ts`, which this spec moves.
-- Spec 2 flagged that its three getters moved from once-per-process to
-  once-per-render, and that `/items/[type]` calls `getTypeNav()` twice per
-  render via `getTypeNavEntry`. **`loadVault`'s `cache()` is the answer** — but
-  confirm the double call collapses to one disk read rather than assuming it.
-- `mock-data.ts` has four *test* importers beyond the three production ones:
-  `dashboard-nav.test.ts`, `vault/layout.test.ts`, `vault/reader.test.ts` and
-  `client-boundary.test.ts` (which names it as a server-only root). All need a
-  new source once the module is gone.
-- `client-boundary.test.ts` walks the import graph to enforce that no
-  `'use client'` file reaches vault data. Its `SERVER_ONLY_ROOTS` must be
-  repointed at the new modules, not deleted — it is the only mechanical guard of
-  its kind in the repo.
-
-**Out of scope:** writing to the vault (spec 5), Git (spec 4), the chokidar
-watcher (spec 7 if at all), a user-facing vault-error list (spec 7).
 
 ## History
 
@@ -972,3 +893,161 @@ Known gaps and follow-ups:
   `MainHeader`'s search is still `readOnly`, a collection's `description` still
   renders nowhere on its own page, `GitSyncPanel` is still hardcoded until
   spec 4, and the display-only controls still give no feedback on click.
+
+### Git Vault 3 — Read Model Swap — 2026-08-07
+
+Pointed the app at the vault on disk and deleted `src/lib/mock-data.ts`. Spec 3
+of 7 (`context/features/git-vault-3-read-model-spec.md`). This is where phase
+1's headline promise lands: hand-edit a Markdown file in `$DEVVAULT_PATH`,
+reload, and the change is there. Still no Git.
+
+**`src/lib/vault/index.ts`** replaces `src/lib/vault-index.ts`. `loadVault` is
+wrapped in React `cache()`, which is exactly the lifetime wanted — the root
+layout and the page both need the vault and share one disk read, and the next
+request re-reads. Deliberately no cross-request cache; a stale cache is the one
+thing that would break the promise above. The four reverse-index functions
+(`findCollection`, `getAllCollectionIds`, `topCollectionsByRecency`,
+`getItemsInCollection`) kept their names and meanings and became async over a
+`cache()`d `loadVaultIndex`, so the module-scope `Map`s and the header comment
+saying they were only valid while the vault was static are gone.
+
+The dedupe was measured rather than assumed: with a damaged file making the
+loader log once per read, one request to `/` — seven accessor calls across the
+layout and page — produced exactly **one** log line, and `/items/[type]`, which
+calls `getTypeNav()` twice by way of `getTypeNavEntry`, also produced one. That
+closes the once-per-render concern spec 2 recorded as needing a caching
+decision.
+
+**Ten accessors and three nav getters became async**, signatures otherwise
+unchanged including the optional `now`. Every route is `force-dynamic` and both
+`generateStaticParams` are deleted; the build output went from 19 prerendered
+routes to 6 dynamic ones, which is the change to expect.
+
+**`dashboard-mappers.ts` had to change, and the spec said it would not.** The
+spec lists it among the pure modules "over data handed to them" — but it was
+not pure: it imported `findCollection` and `getItemsInCollection`. Rather than
+make it async, it was made to match its own description: both mappers now take
+their lookups as arguments, so the module holds no reference to where data came
+from. That is what let it stay synchronous, and it made the module testable
+with no vault at all. `item-sort`, `collection-sort`, `sort-utils`,
+`item-types` and `format` were genuinely untouched by the async conversion.
+
+**`itemTypes` became `ITEM_TYPE_IDS`** in `item-types.ts`. The spec asked to
+move `itemTypes` there and to close the `TYPE_LABELS` duplication in the same
+breath, but spec 2 had already put `label` on `ITEM_TYPE_META` — so keeping an
+`itemTypes` array of ids and labels would have re-created the duplication being
+closed. It now exports the *order* only, and `ItemType` was deleted from
+`types/vault.ts` as it existed solely to type the mock array. The order is its
+own fact worth stating: it is neither `ITEM_TYPE_META`'s key order nor
+`TYPE_PRIORITY`'s, both of which put `command` before `note`.
+
+**Seed data moved to `scripts/seed-data.ts`** (user's call) rather than being
+inlined into `seed-vault.ts` as the spec worded it — same effect, the data
+leaves `src/`, but the script stays ~110 lines instead of ~370 and
+`reader.test.ts` gets a clean import. Nothing in the application may import it:
+the app has one source of truth and it is the vault.
+
+**`VaultSetup`** renders from a `try`/`catch` in `layout.tsx` (user's call).
+The layout is the first thing to touch the vault, and returning the setup
+screen there means `children` never render, so no page gets a second chance to
+throw the same error. `global-error.tsx` was the alternative and is worse
+here — an error thrown in the *root* layout is not caught by `app/error.tsx` at
+all, and `global-error.tsx` is a client component that would have to read the
+`VaultError` off a serialized digest.
+
+**Two bugs found by verifying rather than by testing.** Both were invisible
+until the app actually read the vault:
+
+- `seedVault` now stamps each collection file's mtime to its `updatedAt`. An
+  empty collection derives `updatedAt` from its file mtime (§3.4), and seeding
+  wrote every file "now" — so `Resources & Links`, the one collection with no
+  members, read as the most recently updated thing in the vault and took a
+  sidebar slot from a real collection.
+- `byUpdatedAtDesc` now breaks ties by `id`. `SortableItem` and
+  `SortableCollection` gained an `id` field for it. Without the tie-break the
+  winner of a tie is whichever record the vault read first, so renaming a file
+  could reorder the sidebar.
+
+**The baseline changed, and the baseline was wrong.** Verification item 3
+fails: the sidebar's third collection is now `Context Files`, not `DevOps &
+Commands`. The cause is real rather than a defect — `docker-networking-notes`
+belongs to both collections and is the newest member of both, so under
+derive-from-members their dates are *equal*. The old ordering only existed
+because `context-files` carried a stored `updatedAt` 16 days stale, never
+updated when membership became many-to-many two features ago. Taken at
+`/feature start` (user's call): accept the derived order, fix the stale seed
+value so the data is self-consistent, and make the tie deterministic. The
+recorded sidebar baseline is now **React Patterns · AI Prompts · Context
+Files**, and `/collections` dots are 3 blue, 2 purple, 2 yellow, 1 orange, 1
+muted.
+
+**Verification.** The rendered HTML of all 16 routes was captured before and
+after by stashing the branch, and the *entire* difference is that
+`context-files` moves from 5th to 3rd in collection recency. Every item card,
+count, stat, gradient, `role="img"` and aria-label is byte-identical. Read back
+individually: cards 21 / 5 / 6 / 2 / 4 / 3 / 0 / 3 / 2 / 1 / 1, stats
+12 / 6 / 5 / 3, 13 accent gradients in the recorded per-type distribution
+(4 blue, 3 purple, 2 pink, 1 each green/grey/yellow/orange), both 404s, "New
+Snippet" on exactly one route, relative dates still server-computed strings.
+Playwright reported **zero** console errors and zero warnings across three
+routes — no hydration mismatch. Hand-editing a vault file showed up with no
+rebuild and no restart; deleting one dropped counts consistently everywhere
+(12→11 items, 5→4 favorites, 21→20 cards) and restored cleanly. A damaged file
+is skipped, logged server-side with an actionable vault-relative path, and
+leaks nothing to the browser. `npm run build` passes, `tsc --noEmit` clean.
+
+The setup screen was checked in **production**, not just dev: the dev-mode
+payload does contain a stack trace with an absolute path, but that is React's
+development-only error serialization — a `next start` build has zero absolute
+paths and no `"stack"` key, satisfying the standing constraint.
+
+**Testing.** 172 tests across 14 files, up from 122 across 10. Four new files:
+`vault/index.test.ts` (the loader and all four index functions),
+`dashboard-data.test.ts` (all ten accessors, including that the server pre-sort
+matches the client's `useState` default — the invariant that stops each list
+page reshuffling at hydration), `dashboard-mappers.test.ts` (`copyText` per
+type, dangling collection ids, dominant-type ties) and `sort-utils.test.ts`
+(the tie-break). `reader.test.ts` gained two tests for the mtime bug, which the
+existing mtime test would have passed either way.
+
+Every new assertion was mutation-checked, and **one turned out to be vacuous**:
+"does not reorder the array it sorts" passed even with
+`topCollectionsByRecency` mutated to sort in place. Outside React, `cache()`
+falls through to the raw function, so the test and the code under test each get
+a *different* array and aliasing is unobservable. It now pins `readVault` to a
+single result object with `vi.doMock`, reproducing the aliasing `cache()`
+creates inside a request, and fails correctly under that mutation. The
+equivalent test in `dashboard-data.test.ts` was deleted rather than repaired —
+`getPinnedItems` sorts what `filter` returned and `getRecentItems` sorts a
+spread copy, so both are safe by construction; a comment records why there is
+no assertion. This is the second time in the series that trusting a green
+mutation run would have banked a worthless test.
+
+Known gaps and follow-ups:
+
+- **`readVault` walks and re-reads the whole vault on every request.** That is
+  correct for now and is what makes hand-edits appear, but it is 18 file reads
+  per navigation and grows linearly with the vault. The chokidar watcher (§6.4)
+  is spec 7 if wanted at all; a real vault of a few thousand items will want
+  something before then.
+- **The `cache()` dedupe has no unit test** and cannot have one — it is inert
+  outside a React request. It was verified against a running server, and
+  `vault/index.test.ts` says so in a comment so nobody writes the vacuous
+  version.
+- The vault-error surface is still only a server log. Nothing in the UI tells a
+  user a file was skipped — spec 7.
+- `VaultSetup` is not unit-tested (it is a component); it was verified against
+  dev and production servers.
+- `collection-sort.ts` and `item-sort.ts` still import nothing from the vault,
+  and `client-boundary.test.ts` now polices five `server-only` roots instead of
+  `mock-data.ts`. Zero of 20 client components reach any of them.
+- An empty collection's derived `updatedAt` comes back from `toISOString()`
+  with milliseconds, while one derived from a member carries the member's exact
+  string. Same instant, different text; harmless for sorting and display, but
+  worth knowing before anything compares these as strings.
+- Carried forward untouched: the sidebar's Pinned and Recent rows are still
+  inert `div`s, the sidebar's "Recent" count still means `items.length`,
+  `MainHeader`'s search is still `readOnly`, a collection's `description` still
+  renders nowhere on its own page, `GitSyncPanel` is still hardcoded until
+  spec 4, the display-only controls still give no feedback on click, and there
+  is still no lint script or ESLint config.
