@@ -75,16 +75,53 @@ export type SyncOutcome =
 export type GitOperation = 'rebase' | 'merge' | 'cherry-pick' | 'revert'
 
 /**
- * `sync` and `resolve` remain unimplemented until specs 6 and 7; both throw.
- * They stay declared so those specs fill in a shape that already exists rather
- * than each inventing its own.
+ * Named by *meaning*, never by Git's flag.
  *
- * Every method that touches the index — everything except `status`, `log` and
- * `fileAtRevision` — is serialized through the write queue by the
- * implementation (§5.9). Callers do not queue for themselves.
+ * Lives here with the rest of the seam rather than beside the rule that
+ * interprets it, so `conflict-sides.ts` can depend on this file and not the
+ * other way round. `conflict-sides.ts` documents the measured mapping.
+ */
+export type ConflictSide = 'mine' | 'theirs'
+
+/**
+ * Both sides of a conflicted file, already resolved to *meaning* rather than to
+ * Git's stage numbers — see `conflict-sides.ts` for why that translation cannot
+ * be left to the caller.
+ */
+export type ConflictSides = {
+  /** This computer's version. */
+  mine: string
+  /** The version that arrived from the remote. */
+  theirs: string
+}
+
+/**
+ * What finishing a suspended operation actually did.
+ *
+ * `nothing-to-continue` is not a failure: an autostash restore that conflicted
+ * leaves no operation in progress at all, so once the files are resolved there
+ * is nothing to continue — the user simply has staged changes to commit.
+ */
+export type ContinueOutcome =
+  | { kind: 'continued'; operation: GitOperation }
+  | { kind: 'nothing-to-continue' }
+
+/**
+ * Every method that touches the index — everything except `status`, `log`,
+ * `fileAtRevision` and `readConflictSides` — is serialized through the write
+ * queue by the implementation (§5.9). Callers do not queue for themselves.
  */
 export interface GitService {
   status(): Promise<GitStatus>
+  /**
+   * Just the unmerged paths, without the rest of a `status()`.
+   *
+   * Exists because `git status` refreshes the index and therefore takes
+   * `.git/index.lock`, which makes it unsafe to call from outside the write
+   * queue while a mutation is in flight. The conflict guard on every save runs
+   * exactly there, so it needs a read that takes no lock.
+   */
+  conflictedPaths(): Promise<string[]>
   log(opts?: { path?: string; limit?: number }): Promise<GitCommit[]>
   stage(paths: string[]): Promise<void>
   commit(message: string): Promise<{ hash: string }>
@@ -102,7 +139,38 @@ export interface GitService {
   sync(): Promise<SyncOutcome>
   fileAtRevision(path: string, hash: string): Promise<string>
   discard(paths: string[]): Promise<void>
-  resolve(path: string, side: 'ours' | 'theirs'): Promise<void>
+  /**
+   * Resolves one conflicted file to the chosen side and stages it (§5.7).
+   *
+   * **The side is named by meaning, not by Git's flag**, and that is a safety
+   * property rather than a style choice: which of `--ours`/`--theirs` holds the
+   * user's own work depends on what the repository is doing, and only this layer
+   * knows. See `conflict-sides.ts` — the mapping is measured, not assumed.
+   */
+  resolve(path: string, side: ConflictSide): Promise<void>
+  /** Both sides of a conflicted file, for showing what is about to be kept. */
+  readConflictSides(path: string): Promise<ConflictSides>
+  /**
+   * `rebase --continue` / `cherry-pick --continue` / `revert --continue`, or a
+   * plain commit to conclude a merge. Refuses while anything is still
+   * conflicted — Git would too, less helpfully.
+   *
+   * Takes no message: a rebase keeps the message of the commit being replayed,
+   * and a merge keeps the one Git generated. There is nothing here for a user
+   * to have written.
+   */
+  continueOperation(): Promise<ContinueOutcome>
+  /**
+   * `<operation> --abort`: throws the whole sync away and returns the vault to
+   * where it started, local commits intact.
+   *
+   * Returns `null` when nothing was in progress to abort. That is not an error
+   * state — an autostash restore that conflicted leaves no operation — but it
+   * *is* a case the caller must not paper over, because there is no safe
+   * "abort" there: the only thing to undo would be the user's own uncommitted
+   * edits.
+   */
+  abortOperation(): Promise<GitOperation | null>
   /**
    * `git rm` — drops the file from disk *and* the index in one step (§5.4),
    * rather than `fs.unlink` followed by a stage.

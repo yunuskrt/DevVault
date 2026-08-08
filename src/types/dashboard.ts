@@ -4,6 +4,7 @@
  * up themselves.
  */
 
+import type { GitOperation } from '@/lib/git/types'
 import type { Collection, Item, ItemTypeId } from '@/types/vault'
 
 export type DashboardStat = {
@@ -126,4 +127,42 @@ export type GitPanelState = {
   description: string
   /** False when there is nothing to sync — no repository, or no remote. */
   canSync: boolean
+}
+
+/*
+ * Vault alerts — conflicted files, and files that would not load.
+ *
+ * A third sibling of `SidebarNav` and `GitPanelState`, for the same reasons:
+ * derived on the server, serializable, and rendered without the client deriving
+ * anything. Both lists are empty in the ordinary case, and the sidebar shows
+ * nothing at all when they are.
+ */
+
+/** One conflicted file, named for its item where the file can still be read. */
+export type ConflictEntry = {
+  /** Vault-relative and POSIX-separated — safe to show. */
+  path: string
+  /** Null when neither the working tree nor the index yields readable frontmatter. */
+  title: string | null
+  /** From the file's directory, so conflict markers cannot corrupt it. */
+  type: ItemTypeId | null
+}
+
+/** One file the vault could not load, from `VaultLoadResult.errors`. */
+export type VaultIssue = {
+  path: string
+  message: string
+}
+
+export type VaultAlerts = {
+  conflicts: ConflictEntry[]
+  /**
+   * What the repository is suspended in, if anything. Drives the dialog's
+   * footer: a suspended operation can be finished or aborted, whereas conflicts
+   * left by a failed autostash restore (`null`) have neither — the files are
+   * simply staged once resolved, and there is nothing to abort but the user's
+   * own edits.
+   */
+  operation: GitOperation | null
+  issues: VaultIssue[]
 }

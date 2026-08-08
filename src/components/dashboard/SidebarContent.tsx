@@ -12,7 +12,8 @@ import { PRIMARY_NAV_ICONS } from '@/lib/nav-icons'
 import SidebarRow from './SidebarRow'
 import SidebarSection from './SidebarSection'
 import GitSyncPanel from './GitSyncPanel'
-import type { GitPanelState, SidebarNav } from '@/types/dashboard'
+import VaultAlertRow from './VaultAlertRow'
+import type { GitPanelState, SidebarNav, VaultAlerts } from '@/types/dashboard'
 
 type Props = {
   /**
@@ -23,17 +24,28 @@ type Props = {
   nav: SidebarNav
   /** Also derived on the server, for the same reason — Git shells out. */
   git: GitPanelState
+  /** Likewise. Drives the alert rows above the Git panel. */
+  alerts: VaultAlerts
   collapsed: boolean
   onToggle?: () => void
   onNavigate?: () => void
+  /**
+   * The dialogs themselves live in `DashboardShell`, which renders once — this
+   * component renders twice (desktop aside and mobile sheet).
+   */
+  onOpenConflicts: () => void
+  onOpenIssues: () => void
 }
 
 const SidebarContent = ({
   nav,
   git,
+  alerts,
   collapsed,
   onToggle,
   onNavigate,
+  onOpenConflicts,
+  onOpenIssues,
 }: Props) => {
   const pathname = usePathname()
   const [typesOpen, setTypesOpen] = useState(true)
@@ -185,7 +197,18 @@ const SidebarContent = ({
         </nav>
       </ScrollArea>
 
-      <GitSyncPanel git={git} collapsed={collapsed} />
+      <VaultAlertRow
+        alerts={alerts}
+        collapsed={collapsed}
+        onOpenConflicts={onOpenConflicts}
+        onOpenIssues={onOpenIssues}
+      />
+
+      <GitSyncPanel
+        git={git}
+        collapsed={collapsed}
+        onOpenConflicts={onOpenConflicts}
+      />
     </div>
   )
 }

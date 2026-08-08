@@ -4,24 +4,31 @@ import React from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import SidebarContent from './SidebarContent'
-import type { GitPanelState, SidebarNav } from '@/types/dashboard'
+import type { GitPanelState, SidebarNav, VaultAlerts } from '@/types/dashboard'
 
 type Props = {
   nav: SidebarNav
   git: GitPanelState
+  alerts: VaultAlerts
   collapsed: boolean
   mobileOpen: boolean
   onToggle: () => void
   onMobileOpenChange: (open: boolean) => void
+  /** Both dialogs live in the shell, which renders once — see `DashboardShell`. */
+  onOpenConflicts: () => void
+  onOpenIssues: () => void
 }
 
 const Sidebar = ({
   nav,
   git,
+  alerts,
   collapsed,
   mobileOpen,
   onToggle,
   onMobileOpenChange,
+  onOpenConflicts,
+  onOpenIssues,
 }: Props) => {
   return (
     <>
@@ -34,8 +41,11 @@ const Sidebar = ({
         <SidebarContent
           nav={nav}
           git={git}
+          alerts={alerts}
           collapsed={collapsed}
           onToggle={onToggle}
+          onOpenConflicts={onOpenConflicts}
+          onOpenIssues={onOpenIssues}
         />
       </aside>
 
@@ -49,8 +59,11 @@ const Sidebar = ({
           <SidebarContent
             nav={nav}
             git={git}
+            alerts={alerts}
             collapsed={false}
             onNavigate={() => onMobileOpenChange(false)}
+            onOpenConflicts={onOpenConflicts}
+            onOpenIssues={onOpenIssues}
           />
         </SheetContent>
       </Sheet>

@@ -30,6 +30,17 @@ export type VaultErrorCode =
   | 'ITEM_EXISTS'
   /** An asset was requested and no readable file sits at that path. */
   | 'ASSET_NOT_FOUND'
+  /**
+   * A write was refused because Git has the file in conflict.
+   *
+   * `coding-standards.md` forbids silently overwriting user changes, and a save
+   * landing on a conflicted file would do exactly that — resolving the conflict
+   * to whatever the app happened to hold in memory, discarding the other side
+   * without anyone choosing.
+   */
+  | 'PATH_CONFLICTED'
+  /** A file could not be handed to the operating system's default application. */
+  | 'OPEN_FAILED'
 
 export class VaultError extends Error {
   readonly code: VaultErrorCode

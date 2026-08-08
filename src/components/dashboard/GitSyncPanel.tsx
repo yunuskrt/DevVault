@@ -21,6 +21,8 @@ type Props = {
    */
   git: GitPanelState
   collapsed: boolean
+  /** Opens the conflict dialog, which lives in `DashboardShell`. */
+  onOpenConflicts: () => void
 }
 
 const TONE_CLASS: Record<GitPanelTone, string> = {
@@ -30,16 +32,23 @@ const TONE_CLASS: Record<GitPanelTone, string> = {
   danger: 'text-destructive',
 }
 
-const GitSyncPanel = ({ git, collapsed }: Props) => {
+const GitSyncPanel = ({ git, collapsed, onOpenConflicts }: Props) => {
   const StateIcon = GIT_PANEL_ICONS[git.icon]
 
   /*
-   * The only state with a real control. In every other state there is either
-   * nothing to commit or something that has to be dealt with first — a
-   * conflict, a missing repository, an unset identity — so the summary stays
-   * the plain text it was.
+   * The commit control. In most other states there is either nothing to commit
+   * or something that has to be dealt with first — a missing repository, an
+   * unset identity — so the summary stays the plain text it was.
    */
   const canCommit = git.icon === 'uncommitted'
+
+  /*
+   * The two states that now have somewhere to go. Until this spec they were
+   * dead text describing a situation the user could only escape from a
+   * terminal; the summary is the affordance, so the count the panel already
+   * showed is the thing you click.
+   */
+  const canResolve = git.icon === 'conflict' || git.icon === 'paused'
 
   if (collapsed) {
     /*
@@ -49,17 +58,39 @@ const GitSyncPanel = ({ git, collapsed }: Props) => {
      * the state icon, which collapsed is the only thing distinguishing synced
      * from conflicted.
      */
-    const collapsedTooltip = canCommit
-      ? `Commit changes. ${git.description}`
-      : git.canSync
-        ? `Sync with the remote. ${git.description}`
-        : git.description
+    const collapsedTooltip = canResolve
+      ? `Resolve conflicts. ${git.description}`
+      : canCommit
+        ? `Commit changes. ${git.description}`
+        : git.canSync
+          ? `Sync with the remote. ${git.description}`
+          : git.description
 
     return (
       <div className="flex shrink-0 justify-center border-t border-sidebar-border/60 p-3">
         <Tooltip>
           <TooltipTrigger asChild>
-            {canCommit ? (
+            {canResolve ? (
+              /*
+               * Ahead of Commit and Sync: a conflicted vault can do neither
+               * until it is resolved, so the rail's one control has to be the
+               * one that leads somewhere.
+               */
+              <button
+                type="button"
+                onClick={onOpenConflicts}
+                className={cn(
+                  'flex shrink-0 items-center rounded-md px-1 py-0.5 -mx-1 transition-colors',
+                  'hover:bg-muted focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                  TONE_CLASS[git.tone],
+                )}
+              >
+                <StateIcon aria-hidden="true" className="size-4" />
+                <span className="sr-only">
+                  Resolve conflicts. {git.description}
+                </span>
+              </button>
+            ) : canCommit ? (
               <CommitButton
                 collapsed
                 label={git.summary}
@@ -99,7 +130,22 @@ const GitSyncPanel = ({ git, collapsed }: Props) => {
         </span>
         <Tooltip>
           <TooltipTrigger asChild>
-            {canCommit ? (
+            {canResolve ? (
+              /* The conflict count is the way into the conflict dialog. */
+              <button
+                type="button"
+                onClick={onOpenConflicts}
+                className={cn(
+                  'flex shrink-0 items-center gap-1 rounded-md px-1 py-0.5 -mx-1 transition-colors',
+                  'hover:bg-muted focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                  TONE_CLASS[git.tone],
+                )}
+              >
+                <StateIcon aria-hidden="true" className="size-3.5" />
+                {git.summary}
+                <span className="sr-only">. Resolve. {git.description}</span>
+              </button>
+            ) : canCommit ? (
               /* The dirty count is the commit control (§7.2). */
               <CommitButton
                 label={git.summary}
@@ -126,9 +172,11 @@ const GitSyncPanel = ({ git, collapsed }: Props) => {
             )}
           </TooltipTrigger>
           <TooltipContent side="top">
-            {canCommit
-              ? `Commit these changes. ${git.description}`
-              : git.description}
+            {canResolve
+              ? `Resolve these conflicts. ${git.description}`
+              : canCommit
+                ? `Commit these changes. ${git.description}`
+                : git.description}
           </TooltipContent>
         </Tooltip>
       </div>
