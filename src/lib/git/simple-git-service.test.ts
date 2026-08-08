@@ -333,16 +333,36 @@ describe('log', () => {
   })
 })
 
-describe('unimplemented operations', () => {
-  it('throws rather than silently doing nothing', async () => {
+describe('interface completeness', () => {
+  it('implements every declared method', async () => {
     /*
-     * Spec 7 fills `resolve` in. A no-op would be the dangerous shape: a caller
-     * would believe it had resolved something. `stage`, `commit`, `discard` and
-     * `fileAtRevision` landed in spec 5 and `sync` in spec 6; all are covered
-     * by their own tests.
+     * Spec 7 filled in `resolve`, the last method that threw. This replaces the
+     * test that asserted it threw: the guarantee worth keeping is that no
+     * method is a silent no-op, since a caller would believe it had resolved
+     * something. Behaviour lives in `conflicts.test.ts` and the suites above.
      */
     const service = createGitService(await makeRepo())
 
-    expect(() => service.resolve('a.md', 'ours')).toThrow(/not available yet/)
+    const methods: (keyof typeof service)[] = [
+      'status',
+      'conflictedPaths',
+      'log',
+      'stage',
+      'commit',
+      'remotes',
+      'sync',
+      'fileAtRevision',
+      'discard',
+      'resolve',
+      'readConflictSides',
+      'continueOperation',
+      'abortOperation',
+      'remove',
+      'move',
+    ]
+
+    for (const method of methods) {
+      expect(typeof service[method]).toBe('function')
+    }
   })
 })

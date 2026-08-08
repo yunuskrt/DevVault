@@ -104,6 +104,107 @@ const definedOnly = <T extends object>(patch: T): Partial<T> =>
 // --- Git steps, each a no-op on a vault without a repository ---------------
 
 /**
+ * Why a record could not be found — "deleted", or "unreadable because it is in
+ * conflict".
+ *
+ * These look identical from the vault's point of view and they are not the same
+ * thing at all. A conflicted file usually holds its markers *in the
+ * frontmatter*, so it fails to parse, so it never reaches `items` — and the
+ * lookup fails before the conflict guard below ever runs. The write is refused
+ * either way, which is what matters, but telling someone their item "no longer
+ * exists" when it is sitting on disk waiting to be resolved sends them looking
+ * for a bug that is not there.
+ *
+ * The path is matched by convention (§3.2: an item's file is `<id>.md`), with a
+ * general message when that does not resolve — a binary item's sidecar is named
+ * for its asset rather than its id. This only ever improves an error message;
+ * nothing depends on it for safety.
+ */
+const describeMissing = async (
+  git: GitService | null,
+  id: string,
+  noun: 'item' | 'collection',
+): Promise<VaultError> => {
+  const conflicted = git ? await git.conflictedPaths() : []
+
+  const match = conflicted.find(
+    (path) => path === `${id}.md` || path.endsWith(`/${id}.md`),
+  )
+
+  if (match) {
+    return new VaultError(
+      'PATH_CONFLICTED',
+      `\`${match}\` is part of a merge conflict and cannot be saved until it is resolved. Open the conflicts panel in the sidebar to choose which version to keep.`,
+    )
+  }
+
+  if (conflicted.length > 0) {
+    return new VaultError(
+      'PATH_CONFLICTED',
+      `That ${noun} could not be read, and your vault has unresolved merge conflicts. Resolve them from the conflicts panel in the sidebar and try again.`,
+    )
+  }
+
+  return new VaultError(
+    noun === 'item' ? 'ITEM_NOT_FOUND' : 'COLLECTION_NOT_FOUND',
+    `That ${noun} no longer exists.`,
+  )
+}
+
+/**
+ * Refuses to write a file Git currently has in conflict (§7.4).
+ *
+ * `coding-standards.md`: *"never silently overwrite user changes"*. A save that
+ * landed on a conflicted file would resolve the conflict by accident — writing
+ * whatever the app held in memory and throwing the other computer's version
+ * away with no one having chosen it. That is the precise failure this whole
+ * spec exists to prevent, so it is enforced here, at the layer that decides the
+ * order of operations, rather than in the UI where a second caller could miss
+ * it.
+ *
+ * Only the *conflicted* paths are blocked, not every write during a suspended
+ * rebase: editing an unrelated item while one file is in conflict is
+ * reasonable, and Git allows it.
+ *
+ * Costs one index read per mutation on a repository-backed vault. That is a
+ * real cost for a check that passes almost always — and it is the cheapest
+ * correct option, since the answer changes without DevVault doing anything (a
+ * `git pull` in a terminal is enough) and so cannot be cached across requests.
+ *
+ * **`conflictedPaths()` rather than `status()`**, and that distinction is
+ * load-bearing. `git status` opportunistically refreshes a stale index and
+ * writes it back, which means taking `.git/index.lock` — measured: it advances
+ * `.git/index`'s mtime on every run, while `ls-files --unmerged` never does.
+ * This guard runs *outside* the write queue, so a `status()` here can collide
+ * with a queued command's `assertIndexUnlocked` precheck and reintroduce the
+ * very `index.lock` failures spec 5's queue was built to eliminate.
+ *
+ * The collision is a race, so it surfaces intermittently: writing this guard
+ * with `status()` broke spec 5's ten-concurrent-creates test once and then
+ * survived three re-runs. `conflict-guard.test.ts` therefore pins the *method
+ * called* rather than relying on that test to catch a regression.
+ */
+const assertWritable = async (
+  git: GitService | null,
+  paths: string[],
+): Promise<void> => {
+  if (!git || paths.length === 0) return
+
+  const conflicted = await git.conflictedPaths()
+  if (conflicted.length === 0) return
+
+  const blocked = paths.filter((path) => conflicted.includes(path))
+  if (blocked.length === 0) return
+
+  throw new VaultError(
+    'PATH_CONFLICTED',
+    // Vault-relative, so naming it leaks nothing and tells the user which file
+    // to go and look at.
+    `\`${blocked[0]}\` is part of a merge conflict and cannot be saved until it is resolved. Open the conflicts panel in the sidebar to choose which version to keep.`,
+  )
+}
+
+/**
  * Stages paths, tolerating a vault with no repository.
  *
  * Staging on every write — rather than only at commit time — is what makes a
@@ -428,6 +529,15 @@ export const createItem = async (
 
   const path = newItemPath(item.type, id, fileName)
 
+  /*
+   * A create can land on a conflicted file, which is not obvious. The slug loop
+   * above avoids paths in `vault.itemPaths`, but that index holds only records
+   * that *parsed* — and a conflicted file usually does not, because the markers
+   * are sitting in its frontmatter. So the collision it is meant to prevent is
+   * exactly the one it cannot see.
+   */
+  await assertWritable(git, [path])
+
   await writeItem(root, item, path)
   await stage(git, [path])
 
@@ -461,7 +571,7 @@ export const updateItem = async (
   const currentPath = vault.itemPaths.get(id)
 
   if (!current || !currentPath) {
-    throw new VaultError('ITEM_NOT_FOUND', 'That item no longer exists.')
+    throw await describeMissing(git, id, 'item')
   }
 
   const candidate = validated({
@@ -482,6 +592,10 @@ export const updateItem = async (
     // diff, which is exactly what the write-through model must not do.
     return { data: current, paths: [], commit: null }
   }
+
+  // After the no-op check above, so that merely *viewing* an item that happens
+  // to be conflicted cannot fail — only a real write is refused.
+  await assertWritable(git, [currentPath])
 
   const item = validated({ ...candidate, updatedAt: nowIso() } as Item)
 
@@ -523,7 +637,7 @@ export const deleteItem = async (
   const path = vault.itemPaths.get(id)
 
   if (!item || !path) {
-    throw new VaultError('ITEM_NOT_FOUND', 'That item no longer exists.')
+    throw await describeMissing(git, id, 'item')
   }
 
   // `images/diagram.png.md` describes `images/diagram.png`.
@@ -533,6 +647,10 @@ export const deleteItem = async (
       : null
 
   const paths = assetPath ? [path, assetPath] : [path]
+
+  // Deleting a conflicted file is as much a silent resolution as saving over
+  // it — it would drop the other computer's version without anyone choosing.
+  await assertWritable(git, paths)
 
   await removePaths(root, git, paths)
   await afterMutation(root, buildCommitMessage('Delete', item.type, item.title))
@@ -593,10 +711,7 @@ export const updateCollection = async (
   const currentPath = vault.collectionPaths.get(id)
 
   if (!current || !currentPath) {
-    throw new VaultError(
-      'COLLECTION_NOT_FOUND',
-      'That collection no longer exists.',
-    )
+    throw await describeMissing(git, id, 'collection')
   }
 
   const collection: Collection = { ...current, ...definedOnly(patch) }
@@ -609,6 +724,8 @@ export const updateCollection = async (
   ) {
     return { data: current, paths: [], commit: null }
   }
+
+  await assertWritable(git, [currentPath])
 
   const path = await writeCollection(root, collection, currentPath)
   await stage(git, [path])
@@ -638,13 +755,22 @@ export const deleteCollection = async (
   const path = vault.collectionPaths.get(id)
 
   if (!collection || !path) {
-    throw new VaultError(
-      'COLLECTION_NOT_FOUND',
-      'That collection no longer exists.',
-    )
+    throw await describeMissing(git, id, 'collection')
   }
 
   const members = vault.items.filter((item) => item.collectionIds.includes(id))
+
+  /*
+   * Checked for the whole set up front, before anything is written. This
+   * mutation rewrites every member item, so a conflict on the *last* member
+   * discovered halfway through would leave the collection deleted and some
+   * items updated — a partial delete that no single retry fixes.
+   */
+  await assertWritable(git, [
+    path,
+    ...members.flatMap((member) => vault.itemPaths.get(member.id) ?? []),
+  ])
+
   const updatedPaths: string[] = []
 
   for (const member of members) {

@@ -19,10 +19,14 @@ const revalidatePath = vi.hoisted(() => vi.fn())
 vi.mock('next/cache', () => ({ revalidatePath }))
 
 const {
+  abortMerge,
   commitChanges,
+  completeMerge,
   createCollection,
   createItem,
   deleteItem,
+  openInEditor,
+  resolveConflict,
   syncVault,
   toggleFavorite,
   togglePinned,
@@ -435,5 +439,237 @@ describe('syncVault', () => {
     )
     expect(result.error).not.toContain('ghp_actionlayersecret')
     expect(result.error).not.toContain('nonexistent-host')
+  })
+})
+
+describe('conflict actions', () => {
+  /** Conflicts an item's file for real, and returns its vault-relative path. */
+  const conflictAnItem = async (root: string): Promise<string> => {
+    const created = await createItem({
+      type: 'note',
+      title: 'Shared note',
+      content: 'base\n',
+    })
+    if (!created.success) throw new Error('fixture failed to create an item')
+
+    const file = 'notes/shared-note.md'
+    const target = path.join(root, file)
+    const original = await fs.readFile(target, 'utf8')
+
+    git(root, 'add', '-A')
+    git(root, 'commit', '-m', 'baseline')
+
+    git(root, 'checkout', '-b', 'incoming')
+    await fs.writeFile(target, `${original}\nfrom the other computer\n`, 'utf8')
+    git(root, 'commit', '-am', 'other computer')
+
+    git(root, 'checkout', 'main')
+    await fs.writeFile(target, `${original}\nfrom this computer\n`, 'utf8')
+    git(root, 'commit', '-am', 'this computer')
+
+    try {
+      git(root, 'merge', 'incoming')
+    } catch {
+      // Expected — the merge stops.
+    }
+
+    return file
+  }
+
+  it('resolves to the requested side and reports what is left', async () => {
+    const root = await makeVault()
+    const file = await conflictAnItem(root)
+
+    const result = await resolveConflict({ path: file, side: 'mine' })
+
+    expect(result).toEqual({ success: true, data: { remaining: 0 } })
+    // Read the file, never trust the label.
+    expect(await fs.readFile(path.join(root, file), 'utf8')).toContain(
+      'from this computer',
+    )
+  })
+
+  it('counts down as each file is resolved (verification 4)', async () => {
+    /*
+     * Two conflicted files, resolved one at a time. This is what gates the
+     * dialog's **Complete merge** button, so a `remaining` that is always 0
+     * would enable it while the vault is still half-conflicted — and a
+     * single-conflict test cannot tell the two apart.
+     */
+    const root = await makeVault()
+
+    for (const title of ['First note', 'Second note']) {
+      const created = await createItem({ type: 'note', title, content: 'base\n' })
+      expect(created.success).toBe(true)
+    }
+
+    const files = ['notes/first-note.md', 'notes/second-note.md']
+    const originals = await Promise.all(
+      files.map((file) => fs.readFile(path.join(root, file), 'utf8')),
+    )
+
+    git(root, 'add', '-A')
+    git(root, 'commit', '-m', 'baseline')
+
+    git(root, 'checkout', '-b', 'incoming')
+    await Promise.all(
+      files.map((file, index) =>
+        fs.writeFile(path.join(root, file), `${originals[index]}\nremote\n`, 'utf8'),
+      ),
+    )
+    git(root, 'commit', '-am', 'other computer')
+
+    git(root, 'checkout', 'main')
+    await Promise.all(
+      files.map((file, index) =>
+        fs.writeFile(path.join(root, file), `${originals[index]}\nlocal\n`, 'utf8'),
+      ),
+    )
+    git(root, 'commit', '-am', 'this computer')
+
+    try {
+      git(root, 'merge', 'incoming')
+    } catch {
+      // Expected.
+    }
+
+    const first = await resolveConflict({ path: files[0], side: 'mine' })
+    expect(first).toEqual({ success: true, data: { remaining: 1 } })
+
+    const second = await resolveConflict({ path: files[1], side: 'theirs' })
+    expect(second).toEqual({ success: true, data: { remaining: 0 } })
+  })
+
+  it('resolves to the other side just as literally', async () => {
+    const root = await makeVault()
+    const file = await conflictAnItem(root)
+
+    await resolveConflict({ path: file, side: 'theirs' })
+
+    expect(await fs.readFile(path.join(root, file), 'utf8')).toContain(
+      'from the other computer',
+    )
+  })
+
+  it('revalidates layout-scoped so the panel and the dialog both refresh', async () => {
+    const root = await makeVault()
+    const file = await conflictAnItem(root)
+    revalidatePath.mockClear()
+
+    await resolveConflict({ path: file, side: 'mine' })
+
+    expect(revalidatePath).toHaveBeenCalledWith('/', 'layout')
+  })
+
+  it('rejects a side that is not one of the two', async () => {
+    const root = await makeVault()
+    const file = await conflictAnItem(root)
+
+    // `'ours'` is Git's word and must not be accepted here — the mapping from
+    // meaning to flag belongs to the service, not to a caller.
+    const result = await resolveConflict({ path: file, side: 'ours' })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects a path that would be read as a flag', async () => {
+    await makeVault()
+
+    const result = await resolveConflict({ path: '--force', side: 'mine' })
+
+    expect(result).toEqual({
+      success: false,
+      error: 'That is not a valid vault path.',
+    })
+  })
+
+  it('refuses to complete while anything is still conflicted', async () => {
+    const root = await makeVault()
+    await conflictAnItem(root)
+
+    const result = await completeMerge({})
+
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/still in conflict/)
+  })
+
+  it('completes the merge once everything is resolved', async () => {
+    const root = await makeVault()
+    const file = await conflictAnItem(root)
+
+    await resolveConflict({ path: file, side: 'mine' })
+    const result = await completeMerge({})
+
+    expect(result).toEqual({
+      success: true,
+      data: { kind: 'continued', operation: 'merge' },
+    })
+  })
+
+  it('aborts and reports which operation it undid', async () => {
+    const root = await makeVault()
+    await conflictAnItem(root)
+
+    const result = await abortMerge({})
+
+    expect(result).toEqual({ success: true, data: { operation: 'merge' } })
+  })
+
+  it('reports honestly when there was nothing to abort', async () => {
+    await makeVault()
+
+    expect(await abortMerge({})).toEqual({
+      success: true,
+      data: { operation: null },
+    })
+  })
+})
+
+describe('openInEditor', () => {
+  it('refuses a path that escapes the vault, even when the target exists', async () => {
+    /*
+     * "Even when the target exists" is the whole test. Asserting only that a
+     * traversal fails is worthless here: `../../etc/passwd` resolved naively
+     * lands somewhere that happens not to exist, so the call fails on the
+     * existence check and the assertion passes with `resolveInVault` removed
+     * entirely — verified by mutation.
+     *
+     * Pointing the traversal at a file that genuinely exists outside the vault
+     * makes the boundary the only thing that can refuse it.
+     */
+    const root = await makeVault()
+    const outside = path.join(path.dirname(root), 'outside-the-vault.txt')
+    await fs.writeFile(outside, 'secret\n', 'utf8')
+
+    try {
+      const escape = `../${path.basename(outside)}`
+      expect(await fs.readFile(outside, 'utf8')).toBe('secret\n')
+
+      const result = await openInEditor({ path: escape })
+
+      expect(result.success).toBe(false)
+      expect(result.error).not.toContain(root)
+    } finally {
+      await fs.rm(outside, { force: true })
+    }
+  })
+
+  it('reports a missing file without leaking the absolute path', async () => {
+    const root = await makeVault()
+
+    const result = await openInEditor({ path: 'notes/absent.md' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).not.toContain(root)
+    expect(result.error).toContain('notes/absent.md')
+  })
+
+  it('rejects a path that would be read as a flag', async () => {
+    await makeVault()
+
+    expect(await openInEditor({ path: '-a' })).toEqual({
+      success: false,
+      error: 'That is not a valid vault path.',
+    })
   })
 })

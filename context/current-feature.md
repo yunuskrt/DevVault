@@ -1,18 +1,107 @@
-# Current Feature
+# Current Feature: Git Vault 7 — Conflicts and Robustness
+
+Spec: `context/features/git-vault-7-conflicts-spec.md` (7 of 7, closes phase 1).
+Requires spec 6.
 
 ## Status
 
 <!-- Not Started|In Progress|Completed -->
 
-Not Started
+In Progress
 
 ## Goals
 
 <!-- Goals & requirements -->
 
+- **Conflict detection** — read conflicts from `GitStatus.conflicted` and from a
+  rejecting merge/rebase (`GitResponseError` with `err.git` `MergeSummary`). Map
+  each conflicted path back to its item so the UI can name the item rather than
+  the path; fall back to the path when the conflicted file will not parse, and
+  never crash on one.
+- **Resolution primitives on `GitService`** — `resolve(path, 'ours' | 'theirs')`
+  (`git checkout --ours/--theirs` then `git add`), `readConflictSides(path)`
+  (`git show :2:` / `:3:`), `abortMerge()` (`merge --abort` / `rebase --abort`)
+  and `continueRebase()`. `resolve` is the last `GitService` method still
+  throwing.
+- **Ours/theirs invert during a rebase.** Local commits are being replayed, so
+  `--ours` is the *upstream* side. Verify against a real rebase conflict rather
+  than reasoning about it, and label the UI by meaning ("Keep this computer's
+  version"), not by the Git flag name.
+- **Conflict view** — a dedicated route or full-screen dialog reached from the
+  panel's conflict state. Per file: item title where resolvable, the path, and
+  **Keep mine** / **Keep theirs** / **Open in editor**. Footer: **Complete
+  merge** (enabled only when nothing remains conflicted) and **Abort**.
+- **Block writes to conflicted paths while a conflict is open.** A conflict
+  resolved implicitly by a later save is the silent overwrite the standards
+  forbid.
+- **Vault error surface** — give `VaultLoadResult.errors` a persistent sidebar
+  affordance with a count, opening a list of `{ path, message }`. Persistent,
+  not a toast. Messages stay actionable ("`snippets/foo.md` could not be read:
+  `type` is missing"), never a raw Zod dump.
+- **File watcher (optional)** — `chokidar` on the vault root, ignoring `.git/`
+  and `.devvault/cache/`, debounced ~300ms, calling
+  `revalidatePath('/', 'layout')`. Judge whether it earns its complexity.
+- **Robustness sweep** — stale `index.lock` detected and reported rather than
+  hanging; a mid-operation vault at startup (`MERGE_HEAD` / rebase markers)
+  routes into the conflict view; every §7.6 error path has a mapped human
+  message; no raw stderr, repository path or credential-bearing URL reaches the
+  browser in any error state.
+
 ## Notes
 
 <!-- Any extra notes -->
+
+**Why this spec exists.** `coding-standards.md` — *"Handle Git conflicts
+explicitly and never silently overwrite user changes."* Spec 6 made a conflicted
+vault a state the app can *describe* but not *exit*; the only way out today is a
+terminal. This closes that.
+
+**The one check the spec turns on** is verification item 3: keep-mine/keep-theirs
+during a *rebase* conflict specifically. Getting the inversion backwards silently
+discards the user's work — the worst failure this whole series can produce.
+
+**Watcher traps** if it gets built: instantiate once behind a `globalThis`
+singleton or the dev server's hot reload stacks watchers, and ignore `.git/`,
+which churns constantly during every Git operation and would otherwise trigger a
+revalidation storm mid-commit (§6.4).
+
+**Existing ground this builds on:**
+
+- Spec 6 already added a `paused` panel state (rebase in progress) sitting above
+  conflicts in `toGitPanelState`'s precedence chain, and `repo-state.ts` reads
+  the `rebase-merge/` / `rebase-apply/` **directories** rather than
+  `.git/REBASE_HEAD` — §9.7's marker is unsafe. Do not regress that.
+- Spec 6 chose "describe the conflict, do not offer an Abort control" as an
+  interim; this spec replaces that state with the real view.
+- `sync()` returns `conflict` as **data** with `success: true` so it produces no
+  toast (§7.3). The conflict route is what that branch should reach.
+- The queue in `lib/git/queue.ts` already fails fast on a foreign
+  `.git/index.lock` and distinguishes a stale lock by age.
+- Writes go through `lib/vault/mutations.ts`; that is where the conflicted-path
+  block belongs, not in the actions layer.
+- `AUTH_FAILED` is still pattern-tested rather than provoked — the §7.6 audit
+  should note this rather than pretend otherwise.
+
+**Verification** (all against a real second clone, not simulated): same item
+edited both sides → view lists it by title; Keep mine / Keep theirs verified by
+*reading the file*, not trusting the label; the same during a rebase conflict;
+two conflicted files gate **Complete merge**; **Abort** restores the pre-sync
+state with local commits intact; saving a conflicted item is blocked with a clear
+message; two hand-corrupted vault files show a count of 2 with both paths named
+while the other 10 items still render; fixing one by hand drops the count to 1
+with no restart; the watcher (if built) shows an idle-page edit without
+navigating; baseline counts hold on a clean vault; `npm run build` and
+`tsc --noEmit` pass.
+
+**Out of scope:** a three-way merge editor or any diff view inside DevVault;
+per-item history and version restore (todo phase 6); multi-vault management (todo
+phase 6); `devvault init` (todo phase 4).
+
+**After this spec:** update `context/todo.md` — mark phase 1 done, remove the
+"Decide first" block (every question in it is answered in the series overview and
+`docs/git-vault-architecture.md`), and confirm the carried-over gaps list is
+still accurate. Phase 2 (the item detail drawer) then sits on a real data layer,
+with a **Commit changes** action already available to its footer.
 
 ## History
 

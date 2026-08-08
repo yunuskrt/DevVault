@@ -776,3 +776,173 @@ describe('autoCommit', () => {
     ])
   }, 20_000)
 })
+
+describe('conflicted paths are never written over', () => {
+  /*
+   * `coding-standards.md`: "never silently overwrite user changes". A save that
+   * landed on a conflicted file would resolve the conflict by accident — the
+   * exact failure the whole conflict feature exists to prevent — so the block
+   * lives here, in the layer that owns the order of operations, rather than in
+   * the UI where a second caller could miss it.
+   */
+
+  /**
+   * Leaves `file` genuinely unmerged in the index.
+   *
+   * Driven through two branches and a real `git merge` rather than by
+   * hand-writing index entries, so the state is exactly what `git status`
+   * reports as conflicted — which is what the guard reads.
+   */
+  const makeConflict = async (root: string, file: string): Promise<void> => {
+    const target = path.join(root, file)
+    const original = await fs.readFile(target, 'utf8')
+
+    commitEverything(root, 'before conflict')
+
+    git(root, 'checkout', '-b', 'incoming')
+    await fs.writeFile(target, `${original}\nfrom the other computer\n`, 'utf8')
+    git(root, 'commit', '-am', 'other computer')
+
+    git(root, 'checkout', 'main')
+    await fs.writeFile(target, `${original}\nfrom this computer\n`, 'utf8')
+    git(root, 'commit', '-am', 'this computer')
+
+    try {
+      git(root, 'merge', 'incoming')
+    } catch {
+      // Expected — the merge stops on the conflict.
+    }
+  }
+
+  it('refuses to update an item whose file is conflicted (verification 6)', async () => {
+    const root = await makeVault()
+    const created = await createItem(note('Docker networking'))
+    await makeConflict(root, created.paths[0])
+
+    await expect(
+      updateItem(created.data.id, { title: 'Renamed while conflicted' }),
+    ).rejects.toThrow(VaultError)
+  })
+
+  it('names the file and says what to do about it', async () => {
+    const root = await makeVault()
+    const created = await createItem(note('Docker networking'))
+    await makeConflict(root, created.paths[0])
+
+    await expect(
+      updateItem(created.data.id, { description: 'edited' }),
+    ).rejects.toThrow(/merge conflict/)
+
+    // The path is vault-relative, so naming it leaks nothing while telling the
+    // user which file to go and look at.
+    await expect(
+      updateItem(created.data.id, { description: 'edited' }),
+    ).rejects.toThrow(new RegExp(created.paths[0].replace('.', '\\.')))
+  })
+
+  it('says "conflict", not "no longer exists", when the file will not parse', async () => {
+    /*
+     * The realistic case, and it does not reach the guard at all. Conflict
+     * markers usually land in the frontmatter, so the file is not valid YAML,
+     * so the item never loads and the *lookup* fails first. The write is
+     * refused either way — but reporting "That item no longer exists" for an
+     * item sitting on disk waiting to be resolved sends the user hunting for a
+     * bug that is not there. Found in the browser during verification.
+     */
+    const root = await makeVault()
+    const created = await createItem(note('Docker networking'))
+    const file = created.paths[0]
+
+    commitEverything(root, 'before conflict')
+
+    const target = path.join(root, file)
+    const original = await fs.readFile(target, 'utf8')
+    // Edit the *title* line, so the markers land inside the frontmatter.
+    const retitled = (side: string) =>
+      original.replace(/^title: .*$/m, `title: Title from ${side}`)
+
+    git(root, 'checkout', '-b', 'incoming')
+    await fs.writeFile(target, retitled('them'), 'utf8')
+    git(root, 'commit', '-am', 'other computer')
+    git(root, 'checkout', 'main')
+    await fs.writeFile(target, retitled('me'), 'utf8')
+    git(root, 'commit', '-am', 'this computer')
+    try {
+      git(root, 'merge', 'incoming')
+    } catch {
+      // Expected.
+    }
+
+    // Precondition: the item really is unloadable, so the lookup is what fails.
+    const { items } = await readVault(root)
+    expect(items.map((item) => item.id)).not.toContain(created.data.id)
+
+    await expect(
+      updateItem(created.data.id, { description: 'edited' }),
+    ).rejects.toThrow(/merge conflict/)
+    await expect(
+      updateItem(created.data.id, { description: 'edited' }),
+    ).rejects.not.toThrow(/no longer exists/)
+  })
+
+  it('refuses to delete a conflicted item', async () => {
+    // Deleting is as much a silent resolution as saving over it.
+    const root = await makeVault()
+    const created = await createItem(note('Docker networking'))
+    await makeConflict(root, created.paths[0])
+
+    await expect(deleteItem(created.data.id)).rejects.toThrow(VaultError)
+    await expect(
+      fs.access(path.join(root, created.paths[0])),
+    ).resolves.toBeUndefined()
+  })
+
+  it('refuses a flag toggle, which goes through the same write', async () => {
+    const root = await makeVault()
+    const created = await createItem(note('Docker networking'))
+    await makeConflict(root, created.paths[0])
+
+    await expect(setItemFlag(created.data.id, 'favorite', true)).rejects.toThrow(
+      VaultError,
+    )
+  })
+
+  it('still allows editing an item that is not the conflicted one', async () => {
+    // Only the conflicted paths are blocked, not every write during a merge.
+    // Blocking everything would be easier and would make the app unusable for
+    // the entire time a conflict is open.
+    const root = await makeVault()
+    const conflicted = await createItem(note('Docker networking'))
+    const bystander = await createItem(note('Mongo indexes'))
+    await makeConflict(root, conflicted.paths[0])
+
+    const updated = await updateItem(bystander.data.id, {
+      description: 'edited during a conflict',
+    })
+
+    expect(updated.data.description).toBe('edited during a conflict')
+  })
+
+  it('does not block a no-op save, which writes nothing', async () => {
+    // The guard sits after the unchanged-item check, so merely opening a
+    // conflicted item and saving it back untouched is not an error.
+    const root = await makeVault()
+    const created = await createItem(note('Docker networking'))
+    await makeConflict(root, created.paths[0])
+
+    const result = await updateItem(created.data.id, {})
+
+    expect(result.paths).toEqual([])
+  })
+
+  it('lets a vault without a repository save normally', async () => {
+    // There is no such thing as a conflict without Git, and the guard must not
+    // cost a `git status` on a vault that has none.
+    await makeVault({ repo: false })
+    const created = await createItem(note('Docker networking'))
+
+    const updated = await updateItem(created.data.id, { description: 'fine' })
+
+    expect(updated.data.description).toBe('fine')
+  })
+})

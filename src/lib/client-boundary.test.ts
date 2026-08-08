@@ -31,6 +31,11 @@ const SERVER_ONLY_ROOTS = [
   'src/lib/filesystem/walk.ts',
   'src/lib/git/index.ts',
   'src/lib/git/simple-git-service.ts',
+  // Spec 7. `vault-alerts` reads both the vault and Git status; `open-external`
+  // spawns a process against an absolute path. Neither may be reachable from a
+  // client component, and the conflict UI added several new ones.
+  'src/lib/vault-alerts.ts',
+  'src/lib/vault/open-external.ts',
 ]
 
 const sourceFiles = (): string[] => {

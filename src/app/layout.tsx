@@ -12,7 +12,8 @@ import {
 } from "@/lib/dashboard-nav";
 import { loadGitStatus } from "@/lib/git";
 import { toGitPanelState } from "@/lib/git-panel";
-import type { GitPanelState, SidebarNav } from "@/types/dashboard";
+import { loadVaultAlerts } from "@/lib/vault-alerts";
+import type { GitPanelState, SidebarNav, VaultAlerts } from "@/types/dashboard";
 
 const geistSans = Geist({
   variable: "--font-sans",
@@ -46,6 +47,7 @@ export default async function RootLayout({
   // reach into the vault itself.
   let nav: SidebarNav;
   let git: GitPanelState;
+  let alerts: VaultAlerts;
 
   try {
     nav = {
@@ -57,6 +59,9 @@ export default async function RootLayout({
     // render, so a vault without a repository — or without Git at all — still
     // shows every item. Only a missing vault reaches the catch below.
     git = toGitPanelState(await loadGitStatus());
+    // Conflicted files and files that would not parse. Both read from the
+    // already-cached vault and Git status, so this adds no second disk read.
+    alerts = await loadVaultAlerts();
   } catch (error) {
     // The layout is the first thing to touch the vault, so it is where a
     // missing one surfaces. Returning the setup screen here means `children`
@@ -83,7 +88,7 @@ export default async function RootLayout({
       className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <DashboardShell nav={nav} git={git}>
+        <DashboardShell nav={nav} git={git} alerts={alerts}>
           {children}
         </DashboardShell>
         <Toaster />

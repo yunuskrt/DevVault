@@ -6,8 +6,13 @@ import { z } from 'zod'
 import { VaultError } from '@/lib/errors'
 import { GitError, describeForLog } from '@/lib/git/errors'
 import { createGitService } from '@/lib/git/simple-git-service'
-import type { SyncOutcome } from '@/lib/git/types'
+import type {
+  ContinueOutcome,
+  GitOperation,
+  SyncOutcome,
+} from '@/lib/git/types'
 import { resolveVaultPath } from '@/lib/vault/config'
+import { openInDefaultApp } from '@/lib/vault/open-external'
 import {
   commitAll,
   createCollection as createCollectionMutation,
@@ -113,6 +118,30 @@ const commitSchema = z.object({
  * the one export that skips validation.
  */
 const syncSchema = z.object({})
+
+/**
+ * A vault-relative path from the client, which is *untrusted* however it is
+ * typed. `resolveInVault` is still the boundary that enforces this; the schema
+ * rejects the obvious shapes early so a traversal attempt never reaches a
+ * `git checkout` argument list.
+ */
+const vaultPath = z
+  .string()
+  .min(1)
+  .max(1_000)
+  .refine((value) => !value.startsWith('-'), {
+    // A path beginning with `-` would be read by Git as a flag rather than a
+    // pathspec. Every path DevVault writes is `<type-dir>/…`, so nothing
+    // legitimate is lost.
+    message: 'That is not a valid vault path.',
+  })
+
+const resolveConflictSchema = z.object({
+  path: vaultPath,
+  side: z.enum(['mine', 'theirs']),
+})
+
+const pathSchema = z.object({ path: vaultPath })
 
 /**
  * The first Zod message, which `describeValidationError`'s counterpart in the
@@ -285,3 +314,75 @@ export const syncVault = async (
   action('syncVault', syncSchema, input, async () =>
     createGitService(await resolveVaultPath()).sync(),
   )
+
+// --- Conflicts -------------------------------------------------------------
+
+/**
+ * Resolves one conflicted file to one side and stages it (§5.7).
+ *
+ * `side` is `'mine' | 'theirs'` — the user's words, not Git's. Which of
+ * `--ours`/`--theirs` that becomes depends on what the repository is doing, and
+ * only `lib/git/conflict-sides.ts` decides; nothing above the service layer is
+ * allowed an opinion, because being wrong here destroys the user's work
+ * silently.
+ *
+ * Returns how many files are still conflicted, so the dialog can enable its
+ * footer without a second round trip.
+ */
+export const resolveConflict = async (
+  input: unknown,
+): Promise<ActionResult<{ remaining: number }>> =>
+  action('resolveConflict', resolveConflictSchema, input, async ({ path, side }) => {
+    const git = createGitService(await resolveVaultPath())
+
+    await git.resolve(path, side)
+
+    return { remaining: (await git.status()).conflicted.length }
+  })
+
+/**
+ * Finishes what the vault is suspended in, once nothing is conflicted.
+ *
+ * The service refuses while any file remains in conflict, so this cannot half
+ * complete a rebase — and `nothing-to-continue` is a success, not a failure: a
+ * failed autostash restore leaves no operation to continue, only staged files
+ * for the ordinary Commit button to pick up.
+ */
+export const completeMerge = async (
+  input: unknown = {},
+): Promise<ActionResult<ContinueOutcome>> =>
+  action('completeMerge', syncSchema, input, async () =>
+    createGitService(await resolveVaultPath()).continueOperation(),
+  )
+
+/**
+ * Throws the whole operation away and returns the vault to where it started,
+ * local commits intact.
+ *
+ * `null` back means there was nothing in progress to abort. The UI does not
+ * offer the control in that state, so reaching this is a race — someone
+ * finished the rebase in a terminal — and reporting it honestly is better than
+ * inventing an abort that would discard the user's uncommitted edits instead.
+ */
+export const abortMerge = async (
+  input: unknown = {},
+): Promise<ActionResult<{ operation: GitOperation | null }>> =>
+  action('abortMerge', syncSchema, input, async () => ({
+    operation: await createGitService(await resolveVaultPath()).abortOperation(),
+  }))
+
+/**
+ * Hands a vault file to the OS default application (the spec's third conflict
+ * action).
+ *
+ * A browser cannot follow a `file://` link from an `http://` page, so this is
+ * the only way to offer it. The client sends a vault-relative path and gets
+ * nothing back — the absolute path never leaves the server.
+ */
+export const openInEditor = async (
+  input: unknown,
+): Promise<ActionResult<{ path: string }>> =>
+  action('openInEditor', pathSchema, input, async ({ path }) => {
+    await openInDefaultApp(await resolveVaultPath(), path)
+    return { path }
+  })

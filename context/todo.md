@@ -1,18 +1,19 @@
 # TODO
 
 Ordered roadmap. Each numbered phase becomes one or more `/feature` specs in
-`features/`. Nothing here is started.
+`features/`. Phase 1 is complete; nothing below it is started.
 
 ---
 
-## 1. Git repository as source of truth
+## 1. Git repository as source of truth ✅ **Complete**
 
-Replace `src/lib/mock-data.ts` with real reads from a vault on disk. This is the
-blocker for everything below it — search, CLI and AI all sit on top of it.
+Replaced `src/lib/mock-data.ts` with real reads from a vault on disk. This was
+the blocker for everything below it — search, CLI and AI all sit on top of it.
 
-**Researched and specced.** Architecture: `docs/git-vault-architecture.md`.
-Split into seven specs — see `features/git-vault-0-overview.md` for the series,
-the decisions taken and the shared regression baseline.
+**Shipped as seven specs.** Architecture: `docs/git-vault-architecture.md`;
+`features/git-vault-0-overview.md` for the series, the decisions taken and the
+shared regression baseline. Each spec's outcome, including the traps found by
+running it, is recorded in `current-feature.md`'s history.
 
 | # | Spec | Delivers |
 | --- | --- | --- |
@@ -24,7 +25,13 @@ the decisions taken and the shared regression baseline.
 | 6 | `features/git-vault-6-sync-spec.md` | Fetch / pull / push behind one Sync button |
 | 7 | `features/git-vault-7-conflicts-spec.md` | Conflict resolution UI, vault-error surface |
 
-**Decided** (was "decide first" — all open questions are now answered):
+The optional chokidar watcher in spec 7 was **not built** (user's call):
+`force-dynamic` re-reads the vault on every navigation, so it would only have
+helped a page left idle, at the cost of a dependency and two hot-reload traps.
+
+**Decided** — kept as the record of why the vault looks the way it does. These
+were the open questions before the series; the fuller reasoning is in the
+architecture doc and the overview.
 
 - **Engine: `simple-git`, not `isomorphic-git`.** It wraps the system `git`
   binary, so SSH keys and credential helpers work and DevVault stores no
@@ -71,6 +78,13 @@ so the drawer is linkable and back-button works, or pure local state?
 
 Copy, Favorite, Pin, Edit, Delete, Add/remove tag, Commit. Server Actions in
 `src/actions/`, Zod-validated, returning `{ success, data, error }`.
+
+**Most of this already exists.** Spec 5 shipped `createItem`, `updateItem`,
+`deleteItem`, `toggleFavorite`, `togglePinned`, the collection actions and
+`commitChanges` in `src/actions/vault.ts`, all validated and tested — they
+simply have no UI caller yet. The drawer's **Commit changes** footer has an
+action to call on day one, and saves are already refused on a file that is in
+merge conflict (spec 7). This phase is wiring, not a new data layer.
 
 This is also where the display-only controls elsewhere finally get handlers:
 New Item, `New {Type}`, New Collection, `CollectionCardMenu` Edit/Delete.
@@ -124,12 +138,19 @@ handle conflicts. Reached from the Git panel in the sidebar.
 
 ## Carried-over gaps (small, unblocked)
 
-- **UI has never been visually verified** — 9 features confirmed by reading markup
-  only. The `ui-reviewer` agent has Playwright; one run clears the whole backlog.
+- **The card layer has still never been visually verified.** Specs 2, 4, 6 and 7
+  used Playwright, so the sidebar, the Git panel and both alert dialogs have been
+  seen. The card work from the dashboard phases — accent gradients, the tag fade
+  mask, the stretched link on `CollectionCard` — was confirmed by reading markup
+  only and remains unchecked. The `ui-reviewer` agent has Playwright.
 - Sidebar Pinned and Recent rows are inert `div`s with mouse-only tooltips
 - Sidebar "Recent" count is really `items.length`, not a recency filter
 - A collection's `description` renders on its card but not on its own page
-- `TYPE_LABELS` in `dashboard-mappers.ts` duplicates `itemTypes[].label` —
-  flagged 4 features running; fix is `label` on `ITEM_TYPE_META`
-- No lint script and no ESLint config
-- No tests of any kind
+- `MainHeader`'s search input is still `readOnly` — real search is phase 3
+- The display-only controls (New Item, New Collection, `New {Type}`,
+  `CollectionCardMenu` Edit/Delete) still give no feedback on click — phase 2b
+- No lint script and no ESLint config, so nothing mechanically catches the unused
+  imports and dead exports the scans keep finding by hand
+- ~~`TYPE_LABELS` duplicates `itemTypes[].label`~~ — fixed in spec 2 (`label`
+  moved onto `ITEM_TYPE_META`)
+- ~~No tests of any kind~~ — 536 Vitest tests across 34 files as of spec 7

@@ -2,6 +2,7 @@ import 'server-only'
 
 import { simpleGit, type SimpleGit } from 'simple-git'
 
+import { checkoutFlagFor, stageFor } from '@/lib/git/conflict-sides'
 import { GitError, messageFor, toGitError } from '@/lib/git/errors'
 import {
   assertIndexUnlocked,
@@ -9,7 +10,16 @@ import {
   resetGitQueue,
 } from '@/lib/git/queue'
 import { readGitOperation } from '@/lib/git/repo-state'
-import type { GitCommit, GitService, GitStatus, SyncOutcome } from '@/lib/git/types'
+import type {
+  ConflictSide,
+  ConflictSides,
+  ContinueOutcome,
+  GitCommit,
+  GitOperation,
+  GitService,
+  GitStatus,
+  SyncOutcome,
+} from '@/lib/git/types'
 
 /** §5.9: a credential prompt on a remote must never hang a request forever. */
 const BLOCK_TIMEOUT_MS = 20_000
@@ -38,6 +48,24 @@ const BLOCK_TIMEOUT_MS = 20_000
  * would break authentication for the people most likely to rely on it.
  */
 process.env.GIT_TERMINAL_PROMPT = '0'
+
+/*
+ * `rebase --continue` and `merge` open an editor for the commit message, and a
+ * Next.js server has no terminal to open one in — Git would block until the 20s
+ * timeout and then report something unrelated. `true` is the builtin that exits
+ * 0 immediately, so Git keeps the message it already has.
+ *
+ * Set here rather than passed as `-c core.editor=true`, which is the obvious
+ * way and does not work: `@simple-git/argv-parser` rejects it outright with
+ * "Configuring core.editor is not permitted without enabling allowUnsafeEditor".
+ * That is the same guard the note above describes, reached from the other
+ * direction — and the same fix applies, because the parser inspects only what
+ * is *explicitly supplied* and never the environment we inherit from.
+ *
+ * `GIT_TERMINAL_PROMPT=0` does not cover this: it governs credential prompts,
+ * not the editor.
+ */
+process.env.GIT_EDITOR = 'true'
 
 /**
  * One instance per vault root, reused for the life of the process.
@@ -92,13 +120,6 @@ export const resetGitCaches = (): void => {
   resetGitQueue()
 }
 
-const notImplemented = (method: string): never => {
-  throw new GitError(
-    'GIT_FAILED',
-    `This action is not available yet (${method}).`,
-  )
-}
-
 export const createGitService = (root: string): GitService => {
   const git = gitFor(root)
 
@@ -151,6 +172,38 @@ export const createGitService = (root: string): GitService => {
         })),
         isClean: raw.isClean(),
       }
+    } catch (error) {
+      throw toGitError(error)
+    }
+  }
+
+  /**
+   * The unmerged paths, read straight out of the index.
+   *
+   * **Deliberately not `status()`.** `git status` opportunistically refreshes
+   * the index and writes it back, which takes `.git/index.lock` — so calling it
+   * from outside the write queue makes a concurrent queued command fail its
+   * `assertIndexUnlocked` precheck. That is not theoretical: adding a
+   * `status()` call to the mutation layer's conflict guard broke spec 5's
+   * concurrency test, where ten simultaneous creates started colliding on the
+   * lock again.
+   *
+   * `ls-files --unmerged` is a plain index read that takes no lock. `-z` so a
+   * path containing a quote or a newline is not mangled by Git's default
+   * quoting. Each unmerged path appears once per stage, hence the `Set`.
+   */
+  const conflictedPaths = async (): Promise<string[]> => {
+    try {
+      const raw = await git.raw(['ls-files', '--unmerged', '-z'])
+
+      return [
+        ...new Set(
+          raw
+            .split('\0')
+            .filter(Boolean)
+            .map((entry) => entry.slice(entry.indexOf('\t') + 1)),
+        ),
+      ]
     } catch (error) {
       throw toGitError(error)
     }
@@ -371,6 +424,8 @@ export const createGitService = (root: string): GitService => {
   return {
     status: readStatus,
 
+    conflictedPaths,
+
     remotes: listRemotes,
 
     async log({ path, limit }: { path?: string; limit?: number } = {}): Promise<
@@ -470,9 +525,99 @@ export const createGitService = (root: string): GitService => {
 
     sync,
 
-    // Spec 7. Declared on the interface so that spec implements a shape which
-    // already exists; calling it today is a bug, not a no-op.
-    resolve: () => notImplemented('resolve'),
+    /**
+     * Resolve one file to one side, and stage it (§5.7).
+     *
+     * The operation is read *inside* the queued unit rather than passed in, so
+     * the flag is chosen from the repository's state at the moment the checkout
+     * runs. Deciding it earlier would leave a window in which a concurrent
+     * resolve finished the rebase and inverted the answer — and the cost of
+     * being wrong here is the user's work, silently.
+     */
+    resolve(path: string, side: ConflictSide): Promise<void> {
+      return write(async () => {
+        const operation = await readGitOperation(root)
+
+        await git.raw(['checkout', checkoutFlagFor(operation, side), '--', path])
+        await git.add([path])
+      })
+    },
+
+    /**
+     * Both sides, by meaning.
+     *
+     * Reads objects out of the store, so it takes no index lock and is not
+     * queued. A stage can legitimately be absent — a file added on one side and
+     * modified on the other has no common base — so a missing one reads as
+     * empty rather than failing the whole call.
+     */
+    async readConflictSides(path: string): Promise<ConflictSides> {
+      try {
+        const operation = await readGitOperation(root)
+
+        const read = async (side: ConflictSide): Promise<string> => {
+          try {
+            return await git.show([`:${stageFor(operation, side)}:${path}`])
+          } catch {
+            return ''
+          }
+        }
+
+        const [mine, theirs] = await Promise.all([read('mine'), read('theirs')])
+        return { mine, theirs }
+      } catch (error) {
+        throw toGitError(error)
+      }
+    },
+
+    continueOperation(): Promise<ContinueOutcome> {
+      return write(async () => {
+        const operation = await readGitOperation(root)
+
+        /*
+         * Checked here rather than left to Git: `rebase --continue` on an
+         * unresolved tree fails with "You must edit all merge conflicts",
+         * which is advice for someone at a terminal, not for someone looking
+         * at a dialog listing the files.
+         */
+        const { conflicted } = await readStatus()
+        if (conflicted.length > 0) {
+          throw new GitError(
+            'OPERATION_IN_PROGRESS',
+            `${conflicted.length === 1 ? 'One file is' : `${conflicted.length} files are`} still in conflict. Resolve everything before finishing.`,
+          )
+        }
+
+        if (operation === null) {
+          // An autostash restore that conflicted leaves nothing in progress —
+          // the resolved files are simply staged, ready for an ordinary commit.
+          return { kind: 'nothing-to-continue' }
+        }
+
+        if (operation === 'merge') {
+          // A merge has no `--continue` worth using: the conclusion of a merge
+          // is the merge commit itself, and `--no-edit` keeps Git's generated
+          // message rather than opening an editor nobody can see.
+          await git.raw(['commit', '--no-edit'])
+        } else {
+          // Relies on `GIT_EDITOR=true` being set on this process — see the
+          // note at the top of the file for why it cannot be passed as `-c`.
+          await git.raw([operation, '--continue'])
+        }
+
+        return { kind: 'continued', operation }
+      })
+    },
+
+    abortOperation(): Promise<GitOperation | null> {
+      return write(async () => {
+        const operation = await readGitOperation(root)
+        if (operation === null) return null
+
+        await git.raw([operation, '--abort'])
+        return operation
+      })
+    },
   }
 }
 
